@@ -9,7 +9,7 @@ import os
 from flask import Flask, render_template_string, request, redirect, url_for, session
 
 app = Flask(__name__)
-app.secret_key = "marshall_secret_key_secure_panel"
+app.secret_key = "marshall_secret_key_luxury_gold_v4"
 
 USERS = {
     "Marshall": "oopp0099",
@@ -19,10 +19,6 @@ USERS = {
 
 SERVER_ID = "1272600775331414159"
 API = "https://discord.com/api/v9/channels"
-BASE_MSG = """مرحبا بك انا Moderator 𝕭𝖔𝕷𝖆𝖓𝖆 من فريق الإدارة ONESTATE وسأكون مسؤول عن تذكرتك 
-# • من فضلك ارفق دليل 
-# • اسم المخالف 
-# • الخادم الخاص بك"""
 
 DEVICE_PROFILES = [
     {
@@ -31,16 +27,36 @@ DEVICE_PROFILES = [
     },
     {
         "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
-        "X-Super-Properties": "eyJvcyI6ImlPUyIsImRyb3dzZXIiOiJkaXNjb3JkIiwiZGV2aWNlIjoiaVBob25lIiwic3lzdGVtX3ZlcnNpb24iOiIxNy40LjEif="
+        "X-Super-Properties": "eyJvcyI6ImlPUyIsImRldmljZXIiOiJkaXNjb3JkIiwiZGV2aWNlIjoiaVBob25lIiwic3lzdGVtX3ZlcnNpb24iOiIxNy40LjEif="
     }
 ]
 
-user_tokens = {}
-bot_running = False
-bot_thread = None
+user_sessions = {
+    "Marshall": {
+        "running": False, 
+        "speed": 0.3, 
+        "thread": None, 
+        "token": "",
+        "message": "مرحباً عزيزي لاعب معك مرشال من فريق لإداري كيف يمكني مساعدتك"
+    },
+    "Bolana": {
+        "running": False, 
+        "speed": 0.3, 
+        "thread": None, 
+        "token": "",
+        "message": "** اهلاً بك معك بولانا من فريق لاداره كيف اساعدك **\n\n<a:animatedarroworange:1330113117354463318>  *** __أهلا معك Moderator 𝕭𝖔𝕷𝖆𝖓𝖆 <a:firer:1280210368224034907> _ <a:100i:1423339524251189412>  مأهي مشكلتك؟__  ***"
+    },
+    "Osama": {
+        "running": False, 
+        "speed": 0.3, 
+        "thread": None, 
+        "token": "",
+        "message": "** اهلاً بك معك أسامة من فريق لاداره كيف اساعدك **\n\n<a:animatedarroworange:1330113117354463318>  *** __أهلا معك Moderator 𝕭𝖔𝕷𝖆𝖓𝖆 <a:firer:1280210368224034907> _ <a:100i:1423339524251189412>  مأهي مشكلتك؟__  ***"
+    }
+}
+
 active_tickets = set()
 MAX_TICKETS = 3
-current_speed = 0.3  # السرعة الافتتاحية
 received_tickets_log = []
 state_lock = threading.Lock()
 
@@ -54,41 +70,46 @@ def get_secure_headers(token):
         "X-Discord-Locale": "ar"
     }
 
-def safe_post(token, url, payload):
+def safe_post(token, url, payload, current_speed):
     try:
         headers = get_secure_headers(token)
         res = requests.post(url, json=payload, headers=headers, timeout=5)
         if res.status_code == 429:
             retry_after = res.json().get("retry_after", current_speed)
             time.sleep(retry_after)
-            return safe_post(token, url, payload)
+            return safe_post(token, url, payload, current_speed)
         return res
     except Exception:
         return None
 
-def process_ticket(token, ch_id, name):
+def process_ticket(username, token, ch_id, name):
     with state_lock:
         if len(active_tickets) >= MAX_TICKETS or ch_id in active_tickets:
             return
         active_tickets.add(ch_id)
 
+    current_speed = user_sessions[username]["speed"]
+    custom_msg = user_sessions[username]["message"]
+    
     time.sleep(current_speed)
-    res = safe_post(token, f"{API}/{ch_id}/messages", {"content": BASE_MSG})
+    
+    res = safe_post(token, f"{API}/{ch_id}/messages", {"content": custom_msg}, current_speed)
     
     if res and res.status_code in [200, 201]:
         with state_lock:
             if len(received_tickets_log) >= 10:
                 received_tickets_log.pop(0)
-            received_tickets_log.append(f"تم استلام التكت (سرعة {current_speed}ث): #{name}")
+            received_tickets_log.append(f"[{username}] استلم تكت (سرعة {current_speed}ث): #{name}")
         
     with state_lock:
         if ch_id in active_tickets:
             active_tickets.remove(ch_id)
 
-def run_discord_bot(token):
-    global bot_running
+def run_discord_bot(username):
+    token = user_sessions[username]["token"]
+    
     def on_message(ws, msg):
-        if not bot_running:
+        if not user_sessions[username]["running"]:
             ws.close()
             return
         try:
@@ -108,7 +129,7 @@ def run_discord_bot(token):
                         with state_lock:
                             if len(active_tickets) >= MAX_TICKETS:
                                 return
-                        threading.Thread(target=process_ticket, args=(token, ch_id, name)).start()
+                        threading.Thread(target=process_ticket, args=(username, token, ch_id, name)).start()
         except Exception:
             pass
 
@@ -124,12 +145,89 @@ def run_discord_bot(token):
         ws.send(json.dumps(payload))
 
     ws_url = "wss://gateway.discord.gg/?v=9&encoding=json"
-    while bot_running:
+    while user_sessions[username]["running"]:
         try:
             ws = websocket.WebSocketApp(ws_url, on_open=on_open, on_message=on_message)
             ws.run_forever()
         except Exception:
             time.sleep(1)
+
+PANEL_HTML = """
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة التحكم الملكية</title>
+    <style>
+        body { background-color: #080808; color: #e2e8f0; font-family: Tahoma, sans-serif; text-align: center; margin: 0; padding: 15px; }
+        .dev-banner { color: #f59e0b; font-size: 13px; font-weight: bold; margin-bottom: 15px; background: linear-gradient(135deg, #171717, #0d0d0d); padding: 10px; border-radius: 8px; border: 1px solid #332711; display: inline-block; width: 100%; max-width: 400px; box-sizing: border-box; box-shadow: 0 4px 15px rgba(245, 158, 11, 0.1); }
+        .card { background: linear-gradient(180deg, #121212, #0a0a0a); max-width: 400px; margin: 0 auto; padding: 25px; border-radius: 14px; border: 1px solid #262015; box-shadow: 0 15px 35px rgba(0,0,0,0.9), 0 0 20px rgba(245, 158, 11, 0.05); }
+        h1 { color: #f59e0b; font-size: 21px; margin-bottom: 5px; text-shadow: 0 2px 10px rgba(245, 158, 11, 0.2); }
+        .user-tag { color: #34d399; font-size: 13px; margin-bottom: 15px; font-weight: bold; }
+        .speed-badge { background: #161616; border: 1px solid #2d2414; padding: 10px; border-radius: 8px; font-size: 14px; color: #facc15; margin-bottom: 15px; }
+        .btn { display: block; width: 100%; padding: 14px; margin: 12px 0; font-size: 16px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; transition: 0.2s; }
+        .btn-start { background: linear-gradient(135deg, #059669, #047857); color: white; box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3); }
+        .btn-stop { background: linear-gradient(135deg, #dc2626, #b91c1c); color: white; box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3); }
+        .btn-speed-up { display: block; width: 100%; padding: 12px; margin: 8px 0; background: #18181b; border: 1px solid #059669; color: #34d399; font-size: 14px; font-weight: bold; border-radius: 8px; cursor: pointer; }
+        .btn-speed-down { display: block; width: 100%; padding: 12px; margin: 8px 0; background: #18181b; border: 1px solid #d97706; color: #fbbf24; font-size: 14px; font-weight: bold; border-radius: 8px; cursor: pointer; }
+        
+        .msg-section { text-align: right; margin-top: 15px; }
+        .msg-title { color: #f59e0b; font-size: 13px; margin-bottom: 5px; font-weight: bold; }
+        textarea { width: 100%; height: 75px; padding: 8px; background: #0f0f11; border: 1px solid #2a2212; color: #e2e8f0; border-radius: 8px; box-sizing: border-box; resize: none; font-size: 11px; text-align: right; }
+        textarea:focus { border-color: #f59e0b; outline: none; }
+        .btn-save-msg { width: 100%; padding: 9px; margin-top: 6px; background: linear-gradient(135deg, #d97706, #b45309); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 13px; box-shadow: 0 4px 10px rgba(217, 119, 6, 0.2); }
+
+        .log-box { background: #050505; border: 1px solid #221a0d; border-radius: 8px; padding: 10px; height: 100px; overflow-y: auto; text-align: right; font-size: 12px; color: #94a3b8; margin-top: 5px; }
+        .log-title { color: #f59e0b; font-size: 13px; margin-bottom: 5px; text-align: right; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="dev-banner">✨ لوحة المطور الملكية - مرشال ✨</div>
+    <div class="card">
+        <h1>لوحة تحكم التكتات</h1>
+        <div class="user-tag">أهلاً بك، {{ username }}</div>
+        
+        <div class="speed-badge">سرعتك الحالية: <b>{{ speed }} ثانية</b></div>
+        
+        <form action="/toggle" method="post">
+            {% if running %}
+                <button type="submit" class="btn btn-stop">إيقاف بوتك 🛑</button>
+            {% else %}
+                <button type="submit" class="btn btn-start">بدء بوتك 🚀</button>
+            {% endif %}
+        </form>
+
+        <form action="/speed/up" method="post">
+            <button type="submit" class="btn-speed-up">⚡ زيادة سرعة الرد</button>
+        </form>
+        
+        <form action="/speed/down" method="post">
+            <button type="submit" class="btn-speed-down">⏳ تخفيف سرعة الرد</button>
+        </form>
+
+        <div class="msg-section">
+            <div class="msg-title">رسالة التكت الخاصة بك:</div>
+            <form action="/update_msg" method="post">
+                <textarea name="custom_msg">{{ message }}</textarea>
+                <button type="submit" class="btn-save-msg">حفظ التعديلات 💾</button>
+            </form>
+        </div>
+
+        <div class="log-title" style="margin-top: 15px;">التكتات المستلمة:</div>
+        <div class="log-box">
+            {% for item in logs %}
+                <div>• {{ item }}</div>
+            {% else %}
+                <div style="color: #444; text-align: center; margin-top: 25px;">لا توجد تكتات مستلمة بعد...</div>
+            {% endfor %}
+        </div>
+        
+        <a href="/logout" style="color: #ef4444; font-size: 11px; display: block; margin-top: 18px; text-decoration: none;">تسجيل خروج</a>
+    </div>
+</body>
+</html>
+"""
 
 LOGIN_HTML = """
 <!DOCTYPE html>
@@ -139,19 +237,20 @@ LOGIN_HTML = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>تسجيل الدخول - لوحة مرشال</title>
     <style>
-        body { background-color: #050505; color: #ffffff; font-family: Tahoma, sans-serif; text-align: center; margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }
-        .login-card { background: #121212; width: 350px; padding: 30px; border-radius: 12px; border: 1px solid #222; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
-        h2 { color: #38bdf8; margin-bottom: 5px; }
-        .dev-tag { font-size: 11px; color: #ef4444; margin-bottom: 20px; font-weight: bold; }
-        input { width: 100%; padding: 12px; margin: 10px 0; background: #1a1a1a; border: 1px solid #333; color: white; border-radius: 6px; box-sizing: border-box; text-align: center; }
-        .btn { width: 100%; padding: 12px; margin-top: 15px; background: #2563eb; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        body { background-color: #080808; color: #ffffff; font-family: Tahoma, sans-serif; text-align: center; margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        .login-card { background: linear-gradient(180deg, #121212, #0a0a0a); width: 350px; padding: 30px; border-radius: 14px; border: 1px solid #262015; box-shadow: 0 15px 35px rgba(0,0,0,0.9), 0 0 20px rgba(245, 158, 11, 0.05); }
+        h2 { color: #f59e0b; margin-bottom: 5px; text-shadow: 0 2px 10px rgba(245, 158, 11, 0.2); }
+        .dev-tag { font-size: 11px; color: #f59e0b; margin-bottom: 20px; font-weight: bold; }
+        input { width: 100%; padding: 12px; margin: 10px 0; background: #0f0f11; border: 1px solid #2a2212; color: white; border-radius: 8px; box-sizing: border-box; text-align: center; }
+        input:focus { border-color: #f59e0b; outline: none; }
+        .btn { width: 100%; padding: 12px; margin-top: 15px; background: linear-gradient(135deg, #d97706, #b45309); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 10px rgba(217, 119, 6, 0.3); }
         .error { color: #ef4444; font-size: 12px; margin-top: 10px; }
     </style>
 </head>
 <body>
     <div class="login-card">
-        <h2>تسجيل الدخول</h2>
-        <div class="dev-tag">المطور مرشال احذر ⚠️</div>
+        <h2>تسجيل الدخول الملكي</h2>
+        <div class="dev-tag">✨ لوحة مرشال الأمنة ✨</div>
         {% if error %}<div class="error">{{ error }}</div>{% endif %}
         <form method="POST">
             <input type="text" name="username" placeholder="اسم المستخدم" required>
@@ -171,12 +270,13 @@ TOKEN_HTML = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>إدخال التوكن</title>
     <style>
-        body { background-color: #050505; color: #ffffff; font-family: Tahoma, sans-serif; text-align: center; margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }
-        .card { background: #121212; width: 380px; padding: 30px; border-radius: 12px; border: 1px solid #222; }
-        h2 { color: #22c55e; margin-bottom: 5px; }
-        .welcome { font-size: 15px; color: #38bdf8; margin-bottom: 20px; }
-        textarea { width: 100%; height: 80px; padding: 10px; background: #1a1a1a; border: 1px solid #333; color: white; border-radius: 6px; box-sizing: border-box; resize: none; font-size: 12px; text-align: center; }
-        .btn { width: 100%; padding: 12px; margin-top: 15px; background: #22c55e; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        body { background-color: #080808; color: #ffffff; font-family: Tahoma, sans-serif; text-align: center; margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        .card { background: linear-gradient(180deg, #121212, #0a0a0a); width: 380px; padding: 30px; border-radius: 14px; border: 1px solid #262015; box-shadow: 0 15px 35px rgba(0,0,0,0.9); }
+        h2 { color: #f59e0b; margin-bottom: 5px; }
+        .welcome { font-size: 14px; color: #34d399; margin-bottom: 20px; font-weight: bold; }
+        textarea { width: 100%; height: 80px; padding: 10px; background: #0f0f11; border: 1px solid #2a2212; color: white; border-radius: 8px; box-sizing: border-box; resize: none; font-size: 12px; text-align: center; }
+        textarea:focus { border-color: #f59e0b; outline: none; }
+        .btn { width: 100%; padding: 12px; margin-top: 15px; background: linear-gradient(135deg, #059669, #047857); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 10px rgba(5, 150, 105, 0.3); }
     </style>
 </head>
 <body>
@@ -192,75 +292,6 @@ TOKEN_HTML = """
 </html>
 """
 
-PANEL_HTML = """
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>لوحة التحكم الآمنة</title>
-    <style>
-        body { background-color: #050505; color: #f8fafc; font-family: Tahoma, sans-serif; text-align: center; margin: 0; padding: 15px; }
-        .dev-banner { color: #ef4444; font-size: 14px; font-weight: bold; margin-bottom: 15px; background: #121212; padding: 8px; border-radius: 6px; border: 1px solid #222; display: inline-block; width: 100%; max-width: 400px; box-sizing: border-box; }
-        .card { background: #121212; max-width: 400px; margin: 0 auto; padding: 25px; border-radius: 12px; border: 1px solid #222; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
-        h1 { color: #38bdf8; font-size: 20px; margin-bottom: 5px; }
-        .user-tag { color: #22c55e; font-size: 13px; margin-bottom: 15px; }
-        .speed-badge { background: #1a1a1a; border: 1px solid #333; padding: 8px; border-radius: 6px; font-size: 13px; color: #38bdf8; margin-bottom: 15px; }
-        .btn { display: block; width: 100%; padding: 14px; margin: 10px 0; font-size: 16px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; }
-        .btn-start { background: #22c55e; color: white; }
-        .btn-stop { background: #ef4444; color: white; }
-        .speed-row { display: flex; gap: 10px; margin-bottom: 10px; }
-        .btn-speed-up { background: #10b981; color: white; flex: 1; padding: 12px; font-size: 14px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; }
-        .btn-speed-down { background: #f59e0b; color: white; flex: 1; padding: 12px; font-size: 14px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; }
-        .log-box { background: #0a0a0a; border: 1px solid #222; border-radius: 6px; padding: 10px; height: 110px; overflow-y: auto; text-align: right; font-size: 12px; color: #a1a1aa; margin-top: 15px; }
-        .log-title { color: #38bdf8; font-size: 13px; margin-bottom: 5px; text-align: right; font-weight: bold; }
-    </style>
-</head>
-<body>
-    <div class="dev-banner">⚠️ المطور مرشال احذر ⚠️</div>
-    <div class="card">
-        <h1>لوحة تحكم التكتات</h1>
-        <div class="user-tag">أهلاً بك، {{ username }}</div>
-        
-        <div class="speed-badge">السرعة الحالية: <b>{{ speed }} ثانية</b></div>
-        
-        <!-- زر التشغيل / الإيقاف -->
-        <form action="/toggle" method="post">
-            {% if running %}
-                <button type="submit" class="btn btn-stop">إيقاف البوت 🛑</button>
-            {% else %}
-                <button type="submit" class="btn btn-start">بدء البوت 🚀</button>
-            {% endif %}
-        </form>
-
-        <!-- أزرار زيادة وتقليل السرعة تحت زر البدء مباشرة -->
-        <div class="speed-row">
-            <form action="/speed/up" method="post" style="flex: 1; margin:0;">
-                <button type="submit" class="btn-speed-up" style="width: 100%;">⚡ زيادة السرعة</button>
-            </form>
-            <form action="/speed/down" method="post" style="flex: 1; margin:0;">
-                <button type="submit" class="btn-speed-down" style="width: 100%;">⏳ تقليل السرعة</button>
-            </form>
-        </div>
-
-        <div class="log-title">التكتات المستلمة:</div>
-        <div class="log-box">
-            {% for item in logs %}
-                <div>• {{ item }}</div>
-            {% else %}
-                <div style="color: #555; text-align: center; margin-top: 30px;">لا توجد تكتات مستلمة بعد...</div>
-            {% endfor %}
-        </div>
-        
-        <a href="/logout" style="color: #ef4444; font-size: 11px; display: block; margin-top: 15px; text-decoration: none;">تسجيل خروج</a>
-    </div>
-    <script>
-        setTimeout(() => { location.reload(); }, 3000);
-    </script>
-</body>
-</html>
-"""
-
 @app.route('/', methods=['GET', 'POST'])
 def login():
     error = None
@@ -269,7 +300,7 @@ def login():
         password = request.form.get('password')
         if username in USERS and USERS[username] == password:
             session['user'] = username
-            if username not in user_tokens:
+            if not user_sessions[username]["token"]:
                 return redirect(url_for('set_token'))
             return redirect(url_for('panel'))
         else:
@@ -283,50 +314,70 @@ def set_token():
     
     if request.method == 'POST':
         token = request.form.get('token').strip()
-        user_tokens[session['user']] = token
+        user_sessions[session['user']]["token"] = token
         return redirect(url_for('panel'))
         
     return render_template_string(TOKEN_HTML, username=session['user'])
 
 @app.route('/panel')
 def panel():
-    if 'user' not in session or session['user'] not in user_tokens:
+    if 'user' not in session or not user_sessions[session['user']]["token"]:
         return redirect(url_for('login'))
         
-    return render_template_string(PANEL_HTML, username=session['user'], running=bot_running, speed=current_speed, logs=received_tickets_log)
+    username = session['user']
+    user_data = user_sessions[username]
+    return render_template_string(
+        PANEL_HTML, 
+        username=username, 
+        running=user_data["running"], 
+        speed=user_data["speed"], 
+        message=user_data["message"],
+        logs=received_tickets_log
+    )
 
 @app.route('/toggle', methods=['POST'])
 def toggle():
-    global bot_running, bot_thread
     if 'user' not in session:
         return redirect(url_for('login'))
         
-    current_user = session['user']
-    token = user_tokens.get(current_user)
+    username = session['user']
+    user_data = user_sessions[username]
     
-    if not bot_running:
-        if token:
-            bot_running = True
-            bot_thread = threading.Thread(target=run_discord_bot, args=(token,))
-            bot_thread.daemon = True
-            bot_thread.start()
+    if not user_data["running"]:
+        if user_data["token"]:
+            user_data["running"] = True
+            t = threading.Thread(target=run_discord_bot, args=(username,))
+            t.daemon = True
+            t.start()
+            user_data["thread"] = t
     else:
-        bot_running = False
+        user_data["running"] = False
         
     return redirect(url_for('panel'))
 
 @app.route('/speed/up', methods=['POST'])
 def speed_up():
-    global current_speed
-    if current_speed > 0.1:
-        current_speed = round(current_speed - 0.1, 1)  # تسريع الاستجابة
+    if 'user' in session:
+        username = session['user']
+        if user_sessions[username]["speed"] > 0.1:
+            user_sessions[username]["speed"] = round(user_sessions[username]["speed"] - 0.1, 1)
     return redirect(url_for('panel'))
 
 @app.route('/speed/down', methods=['POST'])
 def speed_down():
-    global current_speed
-    if current_speed < 3.0:
-        current_speed = round(current_speed + 0.1, 1)  # إبطاء الاستجابة للأمان
+    if 'user' in session:
+        username = session['user']
+        if user_sessions[username]["speed"] < 3.0:
+            user_sessions[username]["speed"] = round(user_sessions[username]["speed"] + 0.1, 1)
+    return redirect(url_for('panel'))
+
+@app.route('/update_msg', methods=['POST'])
+def update_msg():
+    if 'user' in session:
+        username = session['user']
+        new_msg = request.form.get('custom_msg', '').strip()
+        if new_msg:
+            user_sessions[username]["message"] = new_msg
     return redirect(url_for('panel'))
 
 @app.route('/logout')
