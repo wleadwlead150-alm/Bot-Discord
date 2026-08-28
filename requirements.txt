@@ -1,3 +1,6 @@
 flask
 requests
 websocket-client
+gunicorn
+discord.py
+asyncio
