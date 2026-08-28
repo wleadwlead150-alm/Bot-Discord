@@ -9,7 +9,7 @@ import os
 from flask import Flask, render_template_string, request, redirect, url_for, session
 
 app = Flask(__name__)
-app.secret_key = "marshall_secret_key_luxury_gold_v4"
+app.secret_key = "marshall_secret_key_isolated_logs_v5"
 
 USERS = {
     "Marshall": "oopp0099",
@@ -27,37 +27,40 @@ DEVICE_PROFILES = [
     },
     {
         "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
-        "X-Super-Properties": "eyJvcyI6ImlPUyIsImRldmljZXIiOiJkaXNjb3JkIiwiZGV2aWNlIjoiaVBob25lIiwic3lzdGVtX3ZlcnNpb24iOiIxNy40LjEif="
+        "X-Super-Properties": "eyJvcyI6ImlPUyIsImJyb3dzZXIiOiJkaXNjb3JkIiwiZGV2aWNlIjoiaVBob25lIiwic3lzdGVtX3ZlcnNpb24iOiIxNy40LjEif="
     }
 ]
 
+# فصل السجلات والرسائل والإعدادات لكل مستخدم بشكل مستقل تماماً
 user_sessions = {
     "Marshall": {
         "running": False, 
         "speed": 0.3, 
         "thread": None, 
         "token": "",
-        "message": "مرحباً عزيزي لاعب معك مرشال من فريق لإداري كيف يمكني مساعدتك"
+        "message": "مرحباً عزيزي لاعب معك مرشال من فريق لإداري كيف يمكني مساعدتك",
+        "logs": []
     },
     "Bolana": {
         "running": False, 
         "speed": 0.3, 
         "thread": None, 
         "token": "",
-        "message": "** اهلاً بك معك بولانا من فريق لاداره كيف اساعدك **\n\n<a:animatedarroworange:1330113117354463318>  *** __أهلا معك Moderator 𝕭𝖔𝕷𝖆𝖓𝖆 <a:firer:1280210368224034907> _ <a:100i:1423339524251189412>  مأهي مشكلتك؟__  ***"
+        "message": "** اهلاً بك معك بولانا من فريق لاداره كيف اساعدك **\n\n<a:animatedarroworange:1330113117354463318>  *** __أهلا معك Moderator 𝕭𝖔𝕷𝖆𝖓𝖆 <a:firer:1280210368224034907> _ <a:100i:1423339524251189412>  مأهي مشكلتك؟__  ***",
+        "logs": []
     },
     "Osama": {
         "running": False, 
         "speed": 0.3, 
         "thread": None, 
         "token": "",
-        "message": "** اهلاً بك معك أسامة من فريق لاداره كيف اساعدك **\n\n<a:animatedarroworange:1330113117354463318>  *** __أهلا معك Moderator 𝕭𝖔𝕷𝖆𝖓𝖆 <a:firer:1280210368224034907> _ <a:100i:1423339524251189412>  مأهي مشكلتك؟__  ***"
+        "message": "** اهلاً بك معك أسامة من فريق لاداره كيف اساعدك **\n\n<a:animatedarroworange:1330113117354463318>  *** __أهلا معك Moderator 𝕭𝖔𝕷𝖆𝖓𝖆 <a:firer:1280210368224034907> _ <a:100i:1423339524251189412>  مأهي مشكلتك؟__  ***",
+        "logs": []
     }
 }
 
 active_tickets = set()
 MAX_TICKETS = 3
-received_tickets_log = []
 state_lock = threading.Lock()
 
 def get_secure_headers(token):
@@ -97,9 +100,10 @@ def process_ticket(username, token, ch_id, name):
     
     if res and res.status_code in [200, 201]:
         with state_lock:
-            if len(received_tickets_log) >= 10:
-                received_tickets_log.pop(0)
-            received_tickets_log.append(f"[{username}] استلم تكت (سرعة {current_speed}ث): #{name}")
+            user_logs = user_sessions[username]["logs"]
+            if len(user_logs) >= 10:
+                user_logs.pop(0)
+            user_logs.append(f"استلمت تكت (سرعة {current_speed}ث): #{name}")
         
     with state_lock:
         if ch_id in active_tickets:
@@ -214,7 +218,7 @@ PANEL_HTML = """
             </form>
         </div>
 
-        <div class="log-title" style="margin-top: 15px;">التكتات المستلمة:</div>
+        <div class="log-title" style="margin-top: 15px;">التكتات المستلمة الخاصة بك:</div>
         <div class="log-box">
             {% for item in logs %}
                 <div>• {{ item }}</div>
@@ -332,7 +336,7 @@ def panel():
         running=user_data["running"], 
         speed=user_data["speed"], 
         message=user_data["message"],
-        logs=received_tickets_log
+        logs=user_data["logs"]
     )
 
 @app.route('/toggle', methods=['POST'])
