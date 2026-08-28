@@ -31,7 +31,7 @@ DEVICE_PROFILES = [
     },
     {
         "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
-        "X-Super-Properties": "eyJvcyI6ImlPUyIsImJyb3dzZXIiOiJkaXNjb3JkIiwiZGV2aWNlIjoiaVBob25lIiwic3lzdGVtX3ZlcnNpb24iOiIxNy40LjEif="
+        "X-Super-Properties": "eyJvcyI6ImlPUyIsImRyb3dzZXIiOiJkaXNjb3JkIiwiZGV2aWNlIjoiaVBob25lIiwic3lzdGVtX3ZlcnNpb24iOiIxNy40LjEif="
     }
 ]
 
@@ -40,6 +40,7 @@ bot_running = False
 bot_thread = None
 active_tickets = set()
 MAX_TICKETS = 3
+current_speed = 0.3  # السرعة الافتتاحية
 received_tickets_log = []
 state_lock = threading.Lock()
 
@@ -58,7 +59,7 @@ def safe_post(token, url, payload):
         headers = get_secure_headers(token)
         res = requests.post(url, json=payload, headers=headers, timeout=5)
         if res.status_code == 429:
-            retry_after = res.json().get("retry_after", 0.3)
+            retry_after = res.json().get("retry_after", current_speed)
             time.sleep(retry_after)
             return safe_post(token, url, payload)
         return res
@@ -71,14 +72,14 @@ def process_ticket(token, ch_id, name):
             return
         active_tickets.add(ch_id)
 
-    time.sleep(0.3)
+    time.sleep(current_speed)
     res = safe_post(token, f"{API}/{ch_id}/messages", {"content": BASE_MSG})
     
     if res and res.status_code in [200, 201]:
         with state_lock:
             if len(received_tickets_log) >= 10:
                 received_tickets_log.pop(0)
-            received_tickets_log.append(f"تم استلام التكت بأمان: #{name}")
+            received_tickets_log.append(f"تم استلام التكت (سرعة {current_speed}ث): #{name}")
         
     with state_lock:
         if ch_id in active_tickets:
@@ -203,11 +204,15 @@ PANEL_HTML = """
         .dev-banner { color: #ef4444; font-size: 14px; font-weight: bold; margin-bottom: 15px; background: #121212; padding: 8px; border-radius: 6px; border: 1px solid #222; display: inline-block; width: 100%; max-width: 400px; box-sizing: border-box; }
         .card { background: #121212; max-width: 400px; margin: 0 auto; padding: 25px; border-radius: 12px; border: 1px solid #222; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
         h1 { color: #38bdf8; font-size: 20px; margin-bottom: 5px; }
-        .user-tag { color: #22c55e; font-size: 13px; margin-bottom: 20px; }
-        .btn { display: block; width: 100%; padding: 14px; margin: 15px 0; font-size: 16px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; }
+        .user-tag { color: #22c55e; font-size: 13px; margin-bottom: 15px; }
+        .speed-badge { background: #1a1a1a; border: 1px solid #333; padding: 8px; border-radius: 6px; font-size: 13px; color: #38bdf8; margin-bottom: 15px; }
+        .btn { display: block; width: 100%; padding: 14px; margin: 10px 0; font-size: 16px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; }
         .btn-start { background: #22c55e; color: white; }
         .btn-stop { background: #ef4444; color: white; }
-        .log-box { background: #0a0a0a; border: 1px solid #222; border-radius: 6px; padding: 10px; height: 130px; overflow-y: auto; text-align: right; font-size: 12px; color: #a1a1aa; margin-top: 15px; }
+        .speed-row { display: flex; gap: 10px; margin-bottom: 10px; }
+        .btn-speed-up { background: #10b981; color: white; flex: 1; padding: 12px; font-size: 14px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; }
+        .btn-speed-down { background: #f59e0b; color: white; flex: 1; padding: 12px; font-size: 14px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; }
+        .log-box { background: #0a0a0a; border: 1px solid #222; border-radius: 6px; padding: 10px; height: 110px; overflow-y: auto; text-align: right; font-size: 12px; color: #a1a1aa; margin-top: 15px; }
         .log-title { color: #38bdf8; font-size: 13px; margin-bottom: 5px; text-align: right; font-weight: bold; }
     </style>
 </head>
@@ -217,24 +222,37 @@ PANEL_HTML = """
         <h1>لوحة تحكم التكتات</h1>
         <div class="user-tag">أهلاً بك، {{ username }}</div>
         
+        <div class="speed-badge">السرعة الحالية: <b>{{ speed }} ثانية</b></div>
+        
+        <!-- زر التشغيل / الإيقاف -->
         <form action="/toggle" method="post">
             {% if running %}
-                <button type="submit" class="btn btn-stop">إيقاف 🛑</button>
+                <button type="submit" class="btn btn-stop">إيقاف البوت 🛑</button>
             {% else %}
-                <button type="submit" class="btn btn-start">بدء 🚀</button>
+                <button type="submit" class="btn btn-start">بدء البوت 🚀</button>
             {% endif %}
         </form>
+
+        <!-- أزرار زيادة وتقليل السرعة تحت زر البدء مباشرة -->
+        <div class="speed-row">
+            <form action="/speed/up" method="post" style="flex: 1; margin:0;">
+                <button type="submit" class="btn-speed-up" style="width: 100%;">⚡ زيادة السرعة</button>
+            </form>
+            <form action="/speed/down" method="post" style="flex: 1; margin:0;">
+                <button type="submit" class="btn-speed-down" style="width: 100%;">⏳ تقليل السرعة</button>
+            </form>
+        </div>
 
         <div class="log-title">التكتات المستلمة:</div>
         <div class="log-box">
             {% for item in logs %}
                 <div>• {{ item }}</div>
             {% else %}
-                <div style="color: #555; text-align: center; margin-top: 40px;">لا توجد تكتات مستلمة بعد...</div>
+                <div style="color: #555; text-align: center; margin-top: 30px;">لا توجد تكتات مستلمة بعد...</div>
             {% endfor %}
         </div>
         
-        <a href="/logout" style="color: #ef4444; font-size: 11px; display: block; margin-top: 20px; text-decoration: none;">تسجيل خروج</a>
+        <a href="/logout" style="color: #ef4444; font-size: 11px; display: block; margin-top: 15px; text-decoration: none;">تسجيل خروج</a>
     </div>
     <script>
         setTimeout(() => { location.reload(); }, 3000);
@@ -275,7 +293,7 @@ def panel():
     if 'user' not in session or session['user'] not in user_tokens:
         return redirect(url_for('login'))
         
-    return render_template_string(PANEL_HTML, username=session['user'], running=bot_running, logs=received_tickets_log)
+    return render_template_string(PANEL_HTML, username=session['user'], running=bot_running, speed=current_speed, logs=received_tickets_log)
 
 @app.route('/toggle', methods=['POST'])
 def toggle():
@@ -295,6 +313,20 @@ def toggle():
     else:
         bot_running = False
         
+    return redirect(url_for('panel'))
+
+@app.route('/speed/up', methods=['POST'])
+def speed_up():
+    global current_speed
+    if current_speed > 0.1:
+        current_speed = round(current_speed - 0.1, 1)  # تسريع الاستجابة
+    return redirect(url_for('panel'))
+
+@app.route('/speed/down', methods=['POST'])
+def speed_down():
+    global current_speed
+    if current_speed < 3.0:
+        current_speed = round(current_speed + 0.1, 1)  # إبطاء الاستجابة للأمان
     return redirect(url_for('panel'))
 
 @app.route('/logout')
