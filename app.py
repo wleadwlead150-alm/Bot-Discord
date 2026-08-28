@@ -9,13 +9,14 @@ import os
 from flask import Flask, render_template_string, request, redirect, url_for, session
 
 app = Flask(__name__)
-app.secret_key = "marshall_secret_key_ultra_luxury_v12"
+app.secret_key = "marshall_secret_key_ultra_luxury_v13"
 
 USERS = {
     "Marshall": "oopp0099",
     "Bolana": "oopp00998",
     "Osama": "oopp009987",
-    "Kara": "oopp009988"
+    "Kara": "oopp009988",
+    "Isso": "1234"
 }
 
 SERVER_ID = "1272600775331414159"
@@ -23,7 +24,8 @@ API = "https://discord.com/api/v9/channels"
 
 LOG_CHANNELS = {
     "Osama": "1542223899792510996",
-    "Marshall": "1542223986388107264"
+    "Marshall": "1542223986388107264",
+    "Isso": "1542223986388107264"
 }
 
 DEVICE_PROFILES = [
@@ -61,6 +63,12 @@ user_sessions = {
         "message": "** أهلاً بك معك كارا من فريق الإدارة كيف أساعدك **",
         "reply_template": "default",
         "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 5, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False
+    },
+    "Isso": {
+        "running": False, "speed": 0.05, "thread": None, "token": "",
+        "message": "** أهلاً بك معك Isso، مختص حصراً باستلام الشكاوى ضد الإداريين والمشرفين **",
+        "reply_template": "default",
+        "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 5, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False
     }
 }
 
@@ -70,7 +78,7 @@ active_tickets = set()
 state_lock = threading.Lock()
 
 REPLY_TEMPLATES = {
-    "default": "", # سيتم استخدام message الخاصة بالمستخدم
+    "default": "", 
     "evidence_req": "عزيزي الشكاوي اللي تكون فيها دلائل بهذي الطريقه لها متطلبات اتمنى منك اكمالها\n-# ** تفتح تصوير مقطع تظهر فيه جميع السيرفرات بعدها تدخل الخادم الخاص بك وتدخل الشنطه وتحط الجواز على شخصيتك ** .",
     "review_wait": "أهلاً عزيزي جاري مراجعة طلبك تحلى بالصبر\n\n-# **نحن نعمل لخدمتكم**",
     "ban_evidence": "أهلاً عزيزي نرجو الانتظار جاري طلب دليل حظرك من إدارة الخادم"
@@ -111,7 +119,6 @@ def safe_post(token, url, payload, current_speed, username=None):
             if username and username in user_sessions:
                 with state_lock:
                     user_sessions[username]["rate_limit_errors"] += 1
-                    # نظام الكتم المؤقت التلقائي (Auto-Snooze بعد 3 أخطاء)
                     if user_sessions[username]["rate_limit_errors"] >= 3:
                         user_sessions[username]["running"] = False
                         user_sessions[username]["banned_secure"] = True
@@ -147,7 +154,6 @@ def process_ticket(username, token, ch_id, name):
 
     current_speed = session_data["speed"]
     
-    # اختيار الرد الجاهز أو المخصص
     tpl_key = session_data.get("reply_template", "default")
     if tpl_key != "default" and tpl_key in REPLY_TEMPLATES:
         custom_msg = REPLY_TEMPLATES[tpl_key]
@@ -210,6 +216,11 @@ def run_discord_bot(username):
                         if username == "Osama":
                             is_leader_complaint = any(w in name for w in ["قائد", "فصيل", "ليدر"])
                             if not is_leader_complaint:
+                                return
+
+                        if username == "Isso":
+                            is_admin_complaint = any(w in name for w in ["اداري", "إداري", "مشرف", "helper", "مراقب"])
+                            if not is_admin_complaint:
                                 return
 
                         ch_id = d.get("id")
@@ -402,7 +413,6 @@ PANEL_HTML = """
             {% endif %}
         </form>
 
-        <!-- إعدادات الردود والسرعة والحدود -->
         <div class="config-section">
             <form action="/update_settings" method="post">
                 <div class="config-title">تحديد حد التكتات الأقصى:</div>
@@ -425,7 +435,6 @@ PANEL_HTML = """
             </form>
         </div>
 
-        <!-- أدوات الصيانة والتنظيف وفحص التوكن -->
         <form action="/reset_all" method="post" onsubmit="return confirmReset();">
             <button type="submit" class="btn btn-reset">🗑️ إعادة تعيين التكتات والأخطاء</button>
         </form>
@@ -442,7 +451,6 @@ PANEL_HTML = """
             </form>
         </div>
 
-        <!-- لوحة القيادة العليا (Marshall Admin) -->
         {% if username == "Marshall" %}
         <div class="section-box">
             <div class="config-title" style="color: #ef4444; font-size: 12px; margin-bottom: 8px;">👑 لوحة القيادة العليا (Marshall Admin):</div>
