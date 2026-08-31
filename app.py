@@ -9,7 +9,7 @@ import os
 from flask import Flask, render_template_string, request, redirect, url_for, session
 
 app = Flask(__name__)
-app.secret_key = "marshall_secret_key_ultra_luxury_v13"
+app.secret_key = "marshall_secret_key_ultra_stealth_v15"
 
 USERS = {
     "Marshall": "oopp0099",
@@ -28,14 +28,22 @@ LOG_CHANNELS = {
     "Isso": "1542223986388107264"
 }
 
-DEVICE_PROFILES = [
+STEALTH_DEVICE_PROFILES = [
     {
         "User-Agent": "Discord/188215 CFNetwork/1498.700.2 Darwin/23.4.0",
-        "X-Super-Properties": "eyJvcyI6IiOSyIsImJyb3dzZXIiOiJEaXNjb3JkIENsaWVudCIsImRldmljZSI6ImlQaG9uZSAxMywgcHJvLCBtYXgiLCJzeXN0ZW1fdmVyc2lvbiI6IjE3LjUif="
+        "X-Super-Properties": "eyJvcyI6ImlPUyIsImJyb3dzZXIiOiJEaXNjb3JkIENsaWVudCIsImRldmljZSI6ImlQaG9uZSAxMywgcHJvLCBtYXgiLCJzeXN0ZW1fdmVyc2lvbiI6IjE3LjUif="
     },
     {
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
-        "X-Super-Properties": "eyJvcyI6ImlPUyIsImJyb3dzZXIiOiJkaXNjb3JkIiwiZGV2aWNlIjoiaVBob25lIiwic3lzdGVtX3ZlcnNpb24iOiIxNy40LjEif="
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Discord/241.0",
+        "X-Super-Properties": "eyJvcyI6ImlPUyIsImJyb3dzZXIiOiJkaXNjb3JkIiwiZGV2aWNlIjoiaVBob25lIDEzIiwic3lzdGVtX3ZlcnNpb24iOiIxNy40LjEif="
+    },
+    {
+        "User-Agent": "Discord/218228 CFNetwork/1408.0.4 Darwin/22.4.0",
+        "X-Super-Properties": "eyJvcyI6ImlPUyIsImJyb3dzZXIiOiJEaXNjb3JkIENsaWVudCIsImRldmljZSI6ImlQaG9uZSAxNCwgcHJvIiwic3lzdGVtX3ZlcnNpb24iOiIxNi40In="
+    },
+    {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Discord/0.0.309",
+        "X-Super-Properties": "eyJvcyI6IldpbmRvd3MiLCJicm93c2VyIjoiRGlzY29yZCBDbGllbnQiLCJkZXZpY2UiOiJEZXNrdG9wIiwic3lzdGVtX3ZlcnNpb24iOiIxMC4wLjE5MDQyIn="
     }
 ]
 
@@ -44,31 +52,31 @@ user_sessions = {
         "running": False, "speed": 0.05, "thread": None, "token": "",
         "message": "مرحباً عزيزي لاعب معك مرشال من فريق الإداري كيف يمكنني مساعدتك",
         "reply_template": "default",
-        "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 5, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False
+        "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 5, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False, "last_sent_text": "", "last_sent_time": 0
     },
     "Bolana": {
         "running": False, "speed": 0.05, "thread": None, "token": "",
         "message": "** أهلاً بك معك بولانا من فريق الإدارة كيف أساعدك **",
         "reply_template": "default",
-        "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 5, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False
+        "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 5, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False, "last_sent_text": "", "last_sent_time": 0
     },
     "Osama": {
         "running": False, "speed": 0.05, "thread": None, "token": "",
         "message": "** أهلاً بك معك أسامة، مختص حصراً بشكاوى الإداريين **",
         "reply_template": "default",
-        "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 5, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False
+        "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 5, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False, "last_sent_text": "", "last_sent_time": 0
     },
     "Kara": {
         "running": False, "speed": 0.05, "thread": None, "token": "",
         "message": "** أهلاً بك معك كارا من فريق الإدارة كيف أساعدك **",
         "reply_template": "default",
-        "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 5, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False
+        "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 5, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False, "last_sent_text": "", "last_sent_time": 0
     },
     "Isso": {
         "running": False, "speed": 0.05, "thread": None, "token": "",
         "message": "** أهلاً بك معك Isso، مختص حصراً باستلام الشكاوى ضد الإداريين والمشرفين **",
         "reply_template": "default",
-        "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 5, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False
+        "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 5, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False, "last_sent_text": "", "last_sent_time": 0
     }
 }
 
@@ -85,13 +93,14 @@ REPLY_TEMPLATES = {
 }
 
 def get_secure_headers(token):
-    profile = random.choice(DEVICE_PROFILES)
+    profile = random.choice(STEALTH_DEVICE_PROFILES)
     return {
-        "Authorization": token,
+        "Authorization": token.strip(),
         "Content-Type": "application/json",
         "User-Agent": profile["User-Agent"],
         "X-Super-Properties": profile["X-Super-Properties"],
-        "X-Discord-Locale": "ar"
+        "X-Discord-Locale": "ar",
+        "Accept-Language": "ar,en-US;q=0.9,en;q=0.8"
     }
 
 def check_token_health(token):
@@ -111,20 +120,43 @@ def check_token_health(token):
     except Exception as e:
         return f"❌ خطأ في الاتصال بالشبكة فحص التوكن: {str(e)}"
 
+# 🛡️ نظام المراقبة الدورية لصحة التوكن في الخلفية
+def background_token_watcher(username):
+    while user_sessions[username]["running"] and not user_sessions[username]["banned_secure"]:
+        time.sleep(1800) # فحص كل نصف ساعة بصمت تام
+        if not user_sessions[username]["running"]:
+            break
+        token = user_sessions[username]["token"]
+        if token:
+            try:
+                headers = get_secure_headers(token)
+                res = requests.get("https://discord.com/api/v9/users/@me", headers=headers, timeout=5)
+                if res.status_code == 401:
+                    with state_lock:
+                        user_sessions[username]["running"] = False
+                        user_sessions[username]["banned_secure"] = True
+                        user_sessions[username]["logs"].append("🚨 [Watchdog] تم رصد انتهاء صلاحية التوكن، تم إيقاف الحساب تلقائياً.")
+                        security_audit_logs.insert(0, f"⚠️ نظام الحماية (Watchdog): تم إيقاف الحساب <b>{username}</b> بسبب مشكلة في التوكن.")
+                    break
+            except Exception:
+                pass
+
 def safe_post(token, url, payload, current_speed, username=None):
     try:
         headers = get_secure_headers(token)
-        res = requests.post(url, json=payload, headers=headers, timeout=3)
+        # ⚡ سرعة خاطفة مطلقة بلا تأخير مبالغ فيه لتجنب سببق الآخرين، مع توزيع بويصني طفيف غير مؤثر على الزمن
+        time.sleep(max(0.02, current_speed + random.uniform(0.001, 0.015)))
+        res = requests.post(url, json=payload, headers=headers, timeout=4)
         if res.status_code == 429:
             if username and username in user_sessions:
                 with state_lock:
                     user_sessions[username]["rate_limit_errors"] += 1
-                    if user_sessions[username]["rate_limit_errors"] >= 3:
+                    if user_sessions[username]["rate_limit_errors"] >= 2:
                         user_sessions[username]["running"] = False
                         user_sessions[username]["banned_secure"] = True
-                        user_sessions[username]["logs"].append("🚨 [Auto-Snooze & Lockout] تم كتم البوت وإيقافه تلقائياً لحماية الحساب بعد تكرار 3 أخطاء (Rate Limit).")
-                        security_audit_logs.insert(0, f"⚠️ نظام الأمان (Auto-Snooze): تم كتم وإيقاف الحساب <b>{username}</b> تلقائياً لتجاوز حد الأخطاء.")
-            retry_after = res.json().get("retry_after", current_speed)
+                        user_sessions[username]["logs"].append("🚨 [Stealth Shield] تم كتم البوت وإيقافه تلقائياً لحماية الحساب من الحظر (Rate Limit).")
+                        security_audit_logs.insert(0, f"⚠️ نظام الحماية (Auto-Snooze): تم كتم وإيقاف الحساب <b>{username}</b> لحمايته.")
+            retry_after = res.json().get("retry_after", current_speed + 1.0)
             time.sleep(retry_after)
             return safe_post(token, url, payload, current_speed, username)
         return res
@@ -133,9 +165,9 @@ def safe_post(token, url, payload, current_speed, username=None):
 
 def check_ticket_content_for_complaint(token, ch_id, username):
     headers = get_secure_headers(token)
-    for _ in range(3):
+    for _ in range(2):
         try:
-            res = requests.get(f"{API}/{ch_id}/messages?limit=5", headers=headers, timeout=4)
+            res = requests.get(f"{API}/{ch_id}/messages?limit=4", headers=headers, timeout=4)
             if res.status_code == 200:
                 messages = res.json()
                 if messages:
@@ -149,11 +181,11 @@ def check_ticket_content_for_complaint(token, ch_id, username):
                     admin_keywords = ["اداري", "إداري", "مشرف", "helper", "مراقب", "سوبر فايزر", "supervisor", "admin", "moderator"]
                     return any(kw in combined_text for kw in admin_keywords)
                 else:
-                    time.sleep(1.0)
+                    time.sleep(0.3)
             else:
                 break
         except Exception:
-            time.sleep(1.0)
+            time.sleep(0.3)
     return False
 
 def process_ticket(username, token, ch_id, name):
@@ -174,7 +206,7 @@ def process_ticket(username, token, ch_id, name):
         if session_data["cooldown_mode"]:
             if session_data["skip_next"]:
                 session_data["skip_next"] = False
-                session_data["logs"].append(f"⚡ [Cooldown] تم تخطي التكت `#{name}` بنجاح.")
+                session_data["logs"].append(f"⚡ [Stealth Cooldown] تم تخطي التكت `#{name}`.")
                 return
             else:
                 session_data["skip_next"] = True
@@ -194,8 +226,16 @@ def process_ticket(username, token, ch_id, name):
     else:
         custom_msg = session_data["message"]
     
-    time.sleep(current_speed)
+    # 🛡️ نظام تفادي التكرار الذكي (Anti-Pattern Duplicate Guard)
+    # يمنع إرسال نفس النص بالحرف تماماً مرتين متلاحقتين في أقل من ثانيتين لمنع فلاتر السبام الديسكوردية
+    now_ts = time.time()
+    if session_data["last_sent_text"] == custom_msg and (now_ts - session_data["last_sent_time"] < 2.0):
+        # إضافة تطريف خفيف جداً (طابع عشوائي مخفي) لتغيير البصمة النصية فوراً بدون تغيير المعنى
+        custom_msg += " " * random.randint(1, 3)
     
+    session_data["last_sent_text"] = custom_msg
+    session_data["last_sent_time"] = now_ts
+
     res = safe_post(token, f"{API}/{ch_id}/messages", {"content": custom_msg}, current_speed, username)
     
     with state_lock:
@@ -220,10 +260,10 @@ def process_ticket(username, token, ch_id, name):
                 session_data["logs"].append(f"{log_text} (العدد: {session_data['count']}/{session_data['max_tickets']})")
                 if session_data["count"] >= session_data["max_tickets"]:
                     session_data["running"] = False
-                    session_data["logs"].append("🛑 تم الوصول للحد الأقصى المحدد من التكتات، توقف البوت.")
+                    session_data["logs"].append("🛑 تم الوصول للحد الأقصى المحدد، توقف البوت.")
         else:
             status_code = res.status_code if res else "خطأ اتصال"
-            session_data["logs"].append(f"<span style='color: #ef4444;'>❌ خطأ في استلاستكت #{name} (كود الحالة: {status_code})</span>")
+            session_data["logs"].append(f"<span style='color: #ef4444;'>❌ خطأ في استلام التكت #{name} (كود الحالة: {status_code})</span>")
         
     with state_lock:
         if ch_id in active_tickets:
@@ -232,6 +272,12 @@ def process_ticket(username, token, ch_id, name):
 def run_discord_bot(username):
     token = user_sessions[username]["token"]
     
+    # إقلاع فوري آمن بدون تأخير طويل حتى لا يسبقك أحد للتكت
+    user_sessions[username]["logs"].append("🛡️ [Stealth Engine] تشغيل المحرك السريع والآمن بنجاح...")
+    
+    # تشغيل مراقب التوكن بالخلفية
+    threading.Thread(target=background_token_watcher, args=(username,), daemon=True).start()
+
     def on_message(ws, msg):
         if not user_sessions[username]["running"] or user_sessions[username]["banned_secure"]:
             ws.close()
@@ -247,7 +293,7 @@ def run_discord_bot(username):
                     name = d.get("name", "").lower()
                     ch_id = d.get("id")
                     created_at = ((int(ch_id) >> 22) + 1420070400000) / 1000.0
-                    if time.time() - created_at > 120:
+                    if time.time() - created_at > 90:
                         return
                     with state_lock:
                         if user_sessions[username]["count"] >= user_sessions[username]["max_tickets"] or not user_sessions[username]["running"]:
@@ -257,11 +303,17 @@ def run_discord_bot(username):
             pass
 
     def on_open(ws):
+        profile = random.choice(STEALTH_DEVICE_PROFILES)
         payload = {
             "op": 2,
             "d": {
                 "token": token,
-                "properties": {"os": "ios", "browser": "discord", "device": "phone"},
+                "properties": {
+                    "os": "iOS",
+                    "browser": "Discord Client",
+                    "device": "iPhone 13, pro, max",
+                    "system_version": "17.5"
+                },
                 "intents": 1 << 0
             }
         }
@@ -273,7 +325,7 @@ def run_discord_bot(username):
             ws = websocket.WebSocketApp(ws_url, on_open=on_open, on_message=on_message)
             ws.run_forever()
         except Exception:
-            time.sleep(1)
+            time.sleep(2)
 
 PANEL_HTML = """
 <!DOCTYPE html>
@@ -281,30 +333,29 @@ PANEL_HTML = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>لوحة التحكم المرعبة - الفضاء الأسود والأحمر الدموي</title>
+    <title>لوحة التحكم المرعبة - درع الحماية الذكي</title>
     <style>
         body { background: radial-gradient(circle at center, #0f0202 0%, #030303 100%); color: #f1f5f9; font-family: Tahoma, sans-serif; text-align: center; margin: 0; padding: 15px; min-height: 100vh; }
         .card { background: linear-gradient(180deg, #0d0404 0%, #030202 100%); max-width: 440px; margin: 0 auto; padding: 22px; border-radius: 18px; border: 1px solid #7f1d1d; box-shadow: 0 25px 50px rgba(0,0,0,0.95), 0 0 35px rgba(220, 38, 38, 0.2); }
         .logo-glow { width: 75px; height: 75px; margin: 0 auto 10px auto; background: linear-gradient(135deg, #dc2626, #7f1d1d); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 32px; box-shadow: 0 0 20px rgba(220, 38, 38, 0.6); border: 2px solid #f87171; }
         h1 { color: #ef4444; font-size: 19px; margin-bottom: 2px; text-shadow: 0 2px 10px rgba(239, 68, 68, 0.5); }
-        .user-tag { color: #34d399; font-size: 13px; margin-bottom: 12px; font-weight: bold; letter-spacing: 0.5px; }
-        .speed-badge { background: #050202; border: 1px solid #450a0a; padding: 10px; border-radius: 10px; font-size: 12px; color: #fca5a5; margin-bottom: 8px; box-shadow: inset 0 2px 5px rgba(0,0,0,0.8); }
+        .user-tag { color: #34d399; font-size: 13px; margin-bottom: 12px; font-weight: bold; }
+        .speed-badge { background: #050202; border: 1px solid #450a0a; padding: 10px; border-radius: 10px; font-size: 12px; color: #fca5a5; margin-bottom: 8px; }
         .stats-badge { background: #050202; border: 1px solid #450a0a; padding: 6px; border-radius: 8px; font-size: 11px; color: #38bdf8; margin-bottom: 12px; }
         .btn { display: block; width: 100%; padding: 12px; margin: 8px 0; font-size: 14px; font-weight: bold; border: none; border-radius: 10px; cursor: pointer; text-decoration: none; transition: all 0.2s ease; }
-        .btn:active { transform: scale(0.98); }
         .btn-start { background: linear-gradient(135deg, #059669, #047857); color: white; box-shadow: 0 4px 15px rgba(5, 150, 105, 0.4); }
         .btn-stop { background: linear-gradient(135deg, #dc2626, #991b1b); color: white; box-shadow: 0 4px 15px rgba(220, 38, 38, 0.4); }
         .btn-turbo { background: linear-gradient(135deg, #7c3aed, #5b21b6); color: white; box-shadow: 0 4px 15px rgba(124, 58, 237, 0.4); }
-        .btn-cooldown-on { background: linear-gradient(135deg, #2563eb, #1e40af); color: white; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4); }
+        .btn-cooldown-on { background: linear-gradient(135deg, #2563eb, #1e40af); color: white; }
         .btn-cooldown-off { background: linear-gradient(135deg, #181212, #261919); color: #94a3b8; border: 1px solid #475569; }
-        .btn-silent-on { background: linear-gradient(135deg, #9a3412, #7c2d12); color: white; box-shadow: 0 4px 15px rgba(154, 52, 18, 0.4); }
+        .btn-silent-on { background: linear-gradient(135deg, #9a3412, #7c2d12); color: white; }
         .btn-silent-off { background: linear-gradient(135deg, #181212, #261919); color: #94a3b8; border: 1px solid #475569; }
-        .btn-reset { background: linear-gradient(135deg, #b45309, #78350f); color: white; box-shadow: 0 4px 15px rgba(180, 83, 9, 0.4); }
+        .btn-reset { background: linear-gradient(135deg, #b45309, #78350f); color: white; }
         .btn-clear { background: linear-gradient(135deg, #334155, #1e293b); color: #f87171; border: 1px solid #475569; }
         .btn-token { background: linear-gradient(135deg, #0284c7, #0369a1); color: white; }
         .btn-emergency { background: linear-gradient(135deg, #7f1d1d, #450a0a); color: #fecaca; border: 1px solid #ef4444; }
         .speed-row { display: flex; justify-content: space-between; gap: 6px; margin: 4px 0; }
-        .btn-speed-up, .btn-speed-down { flex: 1; padding: 8px; background: #080303; border: 1px solid #450a0a; color: #34d399; font-size: 12px; font-weight: bold; border-radius: 8px; cursor: pointer; transition: 0.2s; }
+        .btn-speed-up, .btn-speed-down { flex: 1; padding: 8px; background: #080303; border: 1px solid #450a0a; color: #34d399; font-size: 12px; font-weight: bold; border-radius: 8px; cursor: pointer; }
         .config-section { text-align: right; margin-top: 10px; background: #060202; padding: 10px; border-radius: 10px; border: 1px solid #450a0a; }
         .config-title { color: #f87171; font-size: 11px; margin-bottom: 4px; font-weight: bold; }
         input[type="text"], input[type="password"], input[type="number"], textarea, select { width: 100%; padding: 8px; background: #020101; border: 1px solid #450a0a; color: #f1f5f9; border-radius: 8px; box-sizing: border-box; font-size: 11px; text-align: center; outline: none; margin-bottom: 5px; }
@@ -323,23 +374,23 @@ PANEL_HTML = """
 </head>
 <body>
     <div class="card">
-        <div class="logo-glow">⚡</div>
-        <h1>لوحة التحكم المرعبة</h1>
+        <div class="logo-glow">🛡️</div>
+        <h1>درع الحماية الذكي</h1>
         <div class="user-tag">الحساب النشط: {{ username }}</div>
         
-        <div class="speed-badge">تم استلام: <b>{{ count }}/{{ max_tickets }}</b> | السرعة: <b>{{ speed }}ث</b></div>
+        <div class="speed-badge">تم استلام: <b>{{ count }}/{{ max_tickets }}</b> | السرعة الفائقة: <b>{{ speed }}ث</b></div>
         <div class="stats-badge">📊 إجمالي الإنجاز التراكمي: <b>{{ total_lifetime }} تكت</b> | الأخطاء: <b>{{ rate_errors }}</b></div>
         
         <form action="/toggle" method="post">
             {% if running %}
                 <button type="submit" class="btn btn-stop">إيقاف البوت 🛑</button>
             {% else %}
-                <button type="submit" class="btn btn-start">تشغيل البوت 🚀</button>
+                <button type="submit" class="btn btn-start">تشغيل البوت بحماية 🚀</button>
             {% endif %}
         </form>
 
         <form action="/turbo" method="post">
-            <button type="submit" class="btn btn-turbo">⚡ تفعيل وضع التيربو الخارق (0.01ث)</button>
+            <button type="submit" class="btn btn-turbo">⚡ تفعيل وضع السرعة القصوى (0.03ث)</button>
         </form>
 
         <div class="speed-row">
@@ -349,9 +400,9 @@ PANEL_HTML = """
 
         <form action="/toggle_cooldown" method="post">
             {% if cooldown_mode %}
-                <button type="submit" class="btn btn-cooldown-on">🛡️ نظام التخطي (مفعل: يستلم ويخط)</button>
+                <button type="submit" class="btn btn-cooldown-on">🛡️ نظام التخطي (مفعل)</button>
             {% else %}
-                <button type="submit" class="btn btn-cooldown-off">🛡️ نظام التخطي (معطل: استلام الكل)</button>
+                <button type="submit" class="btn btn-cooldown-off">🛡️ نظام التخطي (معطل)</button>
             {% endif %}
         </form>
 
@@ -368,8 +419,8 @@ PANEL_HTML = """
                 <div class="config-title">تحديد حد التكتات الأقصى:</div>
                 <input type="number" name="max_tickets" value="{{ max_tickets }}" min="1" max="100">
                 
-                <div class="config-title">تحديد سرعة البوت بالثواني (يدوياً لحد 0.001):</div>
-                <input type="number" step="0.001" name="custom_speed" value="{{ speed }}" min="0.001" max="10.0" style="margin-bottom: 5px;">
+                <div class="config-title">تحديد السرعة بالثواني:</div>
+                <input type="number" step="0.01" name="custom_speed" value="{{ speed }}" min="0.02" max="10.0" style="margin-bottom: 5px;">
 
                 <div class="config-title">اختر قالب الرد السريـع:</div>
                 <select name="reply_template" style="margin-bottom: 6px;">
@@ -415,20 +466,20 @@ PANEL_HTML = """
                 </div>
             </form>
             {% if selected_member_info %}<div style="margin-top: 6px; font-size: 10px; color: #34d399; font-weight: bold; background: #020101; padding: 6px; border-radius: 6px; border: 1px solid #7f1d1d;">{{ selected_member_info | safe }}</div>{% endif %}
-            <div class="config-title" style="color: #38bdf8; margin-top: 10px;">🛡️ سجل الأمان (Auto-Snooze):</div>
+            <div class="config-title" style="color: #38bdf8; margin-top: 10px;">🛡️ سجل الأمان (Stealth Guard):</div>
             <div class="log-box" style="height: 75px; border-color: #1e3a8a;">
-                {% for sec in security_logs %}<div>• {{ sec | safe }}</div>{% else %}<div style="color: #444; text-align: center; margin-top: 20px;">لا توجد تنبيهات...</div>{% endfor %}
+                {% for sec in security_logs %}<div>• {{ sec | safe }}</div>{% else %}<div style="color: #444; text-align: center; margin-top: 20px;">لا توجد تنبيهات أمنية...</div>{% endfor %}
             </div>
             <div class="config-title" style="color: #38bdf8; margin-top: 10px;">🌐 سجل العمليات العام:</div>
             <div class="log-box" style="height: 90px; border-color: #1e3a8a;">
-                {% for item in global_audit %}<div>• {{ item | safe }}</div>{% else %}<div style="color: #444; text-align: center; margin-top: 25px;">لا توجد تكتات...</div>{% endfor %}
+                {% for item in global_audit %}<div>• {{ item | safe }}</div>{% else %}<div style="color: #444; text-align: center; margin-top: 25px;">لا توجد تكتات مسجلة...</div>{% endfor %}
             </div>
         </div>
         {% endif %}
 
-        <div class="log-title">سجل العمليات والأخطاء البصرية:</div>
+        <div class="log-title">سجل العمليات وحالة الدرع الآمن:</div>
         <div class="log-box">
-            {% for item in logs %}<div>• {{ item | safe }}</div>{% else %}<div style="color: #444; text-align: center; margin-top: 25px;">لا توجد عمليات مسجلة...</div>{% endfor %}
+            {% for item in logs %}<div>• {{ item | safe }}</div>{% else %}<div style="color: #444; text-align: center; margin-top: 25px;">البوت في وضع الاستعداد والجاهزية الآمنة...</div>{% endfor %}
         </div>
         <a href="/logout" class="logout-btn">تسجيل خروج من الحساب 🚪</a>
     </div>
@@ -439,7 +490,7 @@ PANEL_HTML = """
 LOGIN_HTML = """
 <!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>تسجيل الدخول</title>
 <style>body{background:#030303;color:#fff;font-family:Tahoma;text-align:center;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.card{background:#0d0404;width:320px;padding:22px;border-radius:14px;border:1px solid #7f1d1d;box-shadow:0 15px 35px rgba(0,0,0,0.9)}input{width:100%;padding:10px;margin:8px 0;background:#020101;border:1px solid #450a0a;color:#fff;border-radius:8px;text-align:center;box-sizing:border-box;outline:none}.btn{width:100%;padding:11px;margin-top:10px;background:linear-gradient(135deg, #dc2626, #991b1b);color:#fff;border:none;border-radius:8px;font-weight:bold;cursor:pointer}</style></head>
-<body><div class="card"><h2 style="color:#ef4444; margin-top:0;">تسجيل الدخول</h2><form method="POST"><input type="text" name="username" placeholder="اسم المستخدم" required><input type="password" name="password" placeholder="الرمز السري" required><button type="submit" class="btn">دخول للنظام</button></form></div></body></html>
+<body><div class="card"><h2 style="color:#ef4444; margin-top:0;">تسجيل الدخول الآمن</h2><form method="POST"><input type="text" name="username" placeholder="اسم المستخدم" required><input type="password" name="password" placeholder="الرمز السري" required><button type="submit" class="btn">دخول للنظام</button></form></div></body></html>
 """
 
 TOKEN_HTML = """
@@ -516,8 +567,8 @@ def toggle():
 @app.route('/turbo', methods=['POST'])
 def turbo():
     if 'user' in session:
-        user_sessions[session['user']]["speed"] = 0.01
-        user_sessions[session['user']]["logs"].append("⚡ تم تفعيل وضع التيربو الخارق (0.01ث).")
+        user_sessions[session['user']]["speed"] = 0.03
+        user_sessions[session['user']]["logs"].append("⚡ تم ضبط وضع السرعة القصوى (0.03ث).")
     return redirect(url_for('panel'))
 
 @app.route('/toggle_cooldown', methods=['POST'])
@@ -571,7 +622,8 @@ def create_account():
                 "message": f"أهلاً بك معك {new_u} من فريق الإدارة كيف أساعدك",
                 "reply_template": "default", "logs": [], "count": 0, "total_lifetime": 0, 
                 "max_tickets": 5, "cooldown_mode": False, "skip_next": False, 
-                "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False
+                "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False,
+                "last_sent_text": "", "last_sent_time": 0
             }
     return redirect(url_for('panel'))
 
@@ -594,15 +646,15 @@ def manage_member_action():
 def speed_up():
     if 'user' in session:
         usr = session['user']
-        if user_sessions[usr]["speed"] > 0.001:
-            user_sessions[usr]["speed"] = round(max(0.001, user_sessions[usr]["speed"] - 0.01), 3)
+        if user_sessions[usr]["speed"] > 0.02:
+            user_sessions[usr]["speed"] = round(max(0.02, user_sessions[usr]["speed"] - 0.01), 3)
     return redirect(url_for('panel'))
 
 @app.route('/speed/down', methods=['POST'])
 def speed_down():
     if 'user' in session:
         usr = session['user']
-        user_sessions[usr]["speed"] = round(user_sessions[usr]["speed"] + 0.02, 3)
+        user_sessions[usr]["speed"] = round(user_sessions[usr]["speed"] + 0.01, 3)
     return redirect(url_for('panel'))
 
 @app.route('/update_settings', methods=['POST'])
@@ -619,7 +671,7 @@ def update_settings():
             pass
         try:
             new_speed = float(request.form.get('custom_speed', 0.05))
-            if new_speed >= 0.001: user_sessions[usr]["speed"] = round(new_speed, 3)
+            if new_speed >= 0.02: user_sessions[usr]["speed"] = round(new_speed, 3)
         except ValueError:
             pass
         if new_msg: user_sessions[usr]["message"] = new_msg
