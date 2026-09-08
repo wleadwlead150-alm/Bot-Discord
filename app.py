@@ -9,23 +9,23 @@ import os
 from flask import Flask, render_template_string, request, redirect, url_for, session
 
 app = Flask(__name__)
-app.secret_key = "marshall_secret_key_ultra_stealth_v15"
+app.secret_key = "saif_elite_system_core_v24_secure_key"
 
 USERS = {
+    "Saif": "12345678",
     "Marshall": "oopp0099",
-    "Bolana": "oopp00998",
-    "Osama": "oopp009987",
-    "Kara": "oopp009988",
-    "Isso": "1234"
+    "kara": "oopp00998"
 }
 
 SERVER_ID = "1272600775331414159"
 API = "https://discord.com/api/v9/channels"
 
+DEFAULT_ALERT_CHANNEL = "1545711547169513483"
+
 LOG_CHANNELS = {
-    "Osama": "1542223899792510996",
-    "Marshall": "1542223986388107264",
-    "Isso": "1542223986388107264"
+    "Saif": DEFAULT_ALERT_CHANNEL,
+    "Marshall": DEFAULT_ALERT_CHANNEL,
+    "Youssef": DEFAULT_ALERT_CHANNEL
 }
 
 STEALTH_DEVICE_PROFILES = [
@@ -39,7 +39,7 @@ STEALTH_DEVICE_PROFILES = [
     },
     {
         "User-Agent": "Discord/218228 CFNetwork/1408.0.4 Darwin/22.4.0",
-        "X-Super-Properties": "eyJvcyI6ImlPUyIsImJyb3dzZXIiOiJEaXNjb3JkIENsaWVudCIsImRldmljZSI6ImlQaG9uZSAxNCwgcHJvIiwic3lzdGVtX3ZlcnNpb24iOiIxNi40In="
+        "X-Super-Properties": "eyJvcyI6ImlPUyIsImJyb3dzZXIiOiJEaXNjb3JkIENsaWVudCIsImRldmljZSI6ImlQaG9ucyAxNCwgcHJvIiwic3lzdGVtX3ZlcnNpb24iOiIxNi40In="
     },
     {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Discord/0.0.309",
@@ -48,35 +48,23 @@ STEALTH_DEVICE_PROFILES = [
 ]
 
 user_sessions = {
+    "Saif": {
+        "running": False, "speed": 0.03, "thread": None, "token": "",
+        "message": "أهلاً بك عزيزي، معك Saif من فريق الإدارة العليا. تفضل كيف يمكنني خدمتك؟",
+        "reply_template": "default",
+        "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 10, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False, "last_sent_text": "", "last_sent_time": 0
+    },
     "Marshall": {
         "running": False, "speed": 0.05, "thread": None, "token": "",
-        "message": "مرحباً عزيزي لاعب معك مرشال من فريق الإداري كيف يمكنني مساعدتك",
+        "message": "أهلاً بك، معك Marshall الإدارة العليا. كيف يمكنني مساعدتك؟",
         "reply_template": "default",
-        "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 5, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False, "last_sent_text": "", "last_sent_time": 0
+        "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 10, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False, "last_sent_text": "", "last_sent_time": 0
     },
-    "Bolana": {
+    "Youssef": {
         "running": False, "speed": 0.05, "thread": None, "token": "",
-        "message": "** أهلاً بك معك بولانا من فريق الإدارة كيف أساعدك **",
+        "message": "أهلاً بك، معك Youssef الإدارة العليا. تفضل بطرح مشكلتك.",
         "reply_template": "default",
-        "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 5, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False, "last_sent_text": "", "last_sent_time": 0
-    },
-    "Osama": {
-        "running": False, "speed": 0.05, "thread": None, "token": "",
-        "message": "** أهلاً بك معك أسامة، مختص حصراً بشكاوى الإداريين **",
-        "reply_template": "default",
-        "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 5, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False, "last_sent_text": "", "last_sent_time": 0
-    },
-    "Kara": {
-        "running": False, "speed": 0.05, "thread": None, "token": "",
-        "message": "** أهلاً بك معك كارا من فريق الإدارة كيف أساعدك **",
-        "reply_template": "default",
-        "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 5, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False, "last_sent_text": "", "last_sent_time": 0
-    },
-    "Isso": {
-        "running": False, "speed": 0.05, "thread": None, "token": "",
-        "message": "** أهلاً بك معك Isso، مختص حصراً باستلام الشكاوى ضد الإداريين والمشرفين **",
-        "reply_template": "default",
-        "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 5, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False, "last_sent_text": "", "last_sent_time": 0
+        "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 10, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False, "last_sent_text": "", "last_sent_time": 0
     }
 }
 
@@ -87,9 +75,9 @@ state_lock = threading.Lock()
 
 REPLY_TEMPLATES = {
     "default": "", 
-    "evidence_req": "عزيزي الشكاوي اللي تكون فيها دلائل بهذي الطريقه لها متطلبات اتمنى منك اكمالها\n-# ** تفتح تصوير مقطع تظهر فيه جميع السيرفرات بعدها تدخل الخادم الخاص بك وتدخل الشنطه وتحط الجواز على شخصيتك ** .",
-    "review_wait": "أهلاً عزيزي جاري مراجعة طلبك تحلى بالصبر\n\n-# **نحن نعمل لخدمتكم**",
-    "ban_evidence": "أهلاً عزيزي نرجو الانتظار جاري طلب دليل حظرك من إدارة الخادم"
+    "evidence_req": "عزيزي، الشكاوي التي تتطلب دلائل يجب إرفاق مقطع فيديو يوضح كافة التفاصيل مع إظهار الهوية.\n-# **نحن بانتظار استكمال المتطلبات.**",
+    "review_wait": "أهلاً بك، جاري مراجعة طلبك بكل دقة. نرجو التحلي بالصبر.\n\n-# **فريق الإدارة في خدمتكم**",
+    "ban_evidence": "نرجو الانتظار قليلاً ريثما يتم جلب تفاصيل التوثيق والأدلة الخاصة بالخادم."
 }
 
 def get_secure_headers(token):
@@ -120,10 +108,9 @@ def check_token_health(token):
     except Exception as e:
         return f"❌ خطأ في الاتصال بالشبكة فحص التوكن: {str(e)}"
 
-# 🛡️ نظام المراقبة الدورية لصحة التوكن في الخلفية
 def background_token_watcher(username):
     while user_sessions[username]["running"] and not user_sessions[username]["banned_secure"]:
-        time.sleep(1800) # فحص كل نصف ساعة بصمت تام
+        time.sleep(1800)
         if not user_sessions[username]["running"]:
             break
         token = user_sessions[username]["token"]
@@ -135,8 +122,8 @@ def background_token_watcher(username):
                     with state_lock:
                         user_sessions[username]["running"] = False
                         user_sessions[username]["banned_secure"] = True
-                        user_sessions[username]["logs"].append("🚨 [Watchdog] تم رصد انتهاء صلاحية التوكن، تم إيقاف الحساب تلقائياً.")
-                        security_audit_logs.insert(0, f"⚠️ نظام الحماية (Watchdog): تم إيقاف الحساب <b>{username}</b> بسبب مشكلة في التوكن.")
+                        user_sessions[username]["logs"].append("🚨 [Watchdog] تم رصد انتهاء صلاحية التوكن، إيقاف الحساب حفاظاً عليه.")
+                        security_audit_logs.insert(0, f"⚠️ نظام الحماية: تم إيقاف الحساب <b>{username}</b> بسبب حالة التوكن.")
                     break
             except Exception:
                 pass
@@ -144,60 +131,76 @@ def background_token_watcher(username):
 def safe_post(token, url, payload, current_speed, username=None):
     try:
         headers = get_secure_headers(token)
-        # ⚡ سرعة خاطفة مطلقة بلا تأخير مبالغ فيه لتجنب سببق الآخرين، مع توزيع بويصني طفيف غير مؤثر على الزمن
-        time.sleep(max(0.02, current_speed + random.uniform(0.001, 0.015)))
+        jitter_delay = random.uniform(0.010, 0.035)
+        time.sleep(max(0.015, current_speed + jitter_delay))
+        
         res = requests.post(url, json=payload, headers=headers, timeout=4)
         if res.status_code == 429:
             if username and username in user_sessions:
                 with state_lock:
                     user_sessions[username]["rate_limit_errors"] += 1
-                    if user_sessions[username]["rate_limit_errors"] >= 2:
+                    if user_sessions[username]["rate_limit_errors"] >= 3:
                         user_sessions[username]["running"] = False
                         user_sessions[username]["banned_secure"] = True
-                        user_sessions[username]["logs"].append("🚨 [Stealth Shield] تم كتم البوت وإيقافه تلقائياً لحماية الحساب من الحظر (Rate Limit).")
-                        security_audit_logs.insert(0, f"⚠️ نظام الحماية (Auto-Snooze): تم كتم وإيقاف الحساب <b>{username}</b> لحمايته.")
+                        user_sessions[username]["logs"].append("🚨 [Elite Shield] تم تجميد الحساب مؤقتاً لتفادي الباند النهائي.")
+                        security_audit_logs.insert(0, f"⚠️ حماية النخبة: تم إيقاف <b>{username}</b> احترازياً.")
             retry_after = res.json().get("retry_after", current_speed + 1.0)
-            time.sleep(retry_after)
+            time.sleep(retry_after + random.uniform(0.1, 0.4))
             return safe_post(token, url, payload, current_speed, username)
         return res
     except Exception:
         return None
 
-def check_ticket_content_for_complaint(token, ch_id, username):
+def verify_and_purge_if_late(token, ch_id, sent_msg_id, current_user_id, username, ticket_name, channel_creation_time):
     headers = get_secure_headers(token)
-    for _ in range(2):
-        try:
-            res = requests.get(f"{API}/{ch_id}/messages?limit=4", headers=headers, timeout=4)
-            if res.status_code == 200:
-                messages = res.json()
-                if messages:
-                    combined_text = ""
-                    for m in messages:
-                        combined_text += " " + m.get("content", "")
-                        for embed in m.get("embeds", []):
-                            combined_text += " " + embed.get("title", "") + " " + embed.get("description", "")
-                    
-                    combined_text = combined_text.lower()
-                    admin_keywords = ["اداري", "إداري", "مشرف", "helper", "مراقب", "سوبر فايزر", "supervisor", "admin", "moderator"]
-                    return any(kw in combined_text for kw in admin_keywords)
-                else:
-                    time.sleep(0.3)
-            else:
-                break
-        except Exception:
-            time.sleep(0.3)
-    return False
+    time.sleep(0.5)
+    try:
+        res = requests.get(f"{API}/{ch_id}/messages?limit=6", headers=headers, timeout=4)
+        if res.status_code == 200:
+            messages = res.json()
+            my_msg_found = False
+            trigger_violation = False
+            violation_reason = ""
+
+            if time.time() - channel_creation_time < 0.15:
+                trigger_violation = True
+                violation_reason = "إرسال مبكر قبل اكتمال فتح التذكرة."
+
+            for m in messages:
+                m_id = m.get("id")
+                author = m.get("author", {})
+                author_id = author.get("id")
+                author_name = author.get("username", "").lower()
+                member_data = m.get("member", {})
+                nick = member_data.get("nick")
+                nick_lower = nick.lower() if nick else ""
+
+                if m_id == sent_msg_id:
+                    my_msg_found = True
+                elif not my_msg_found:
+                    if author_id != current_user_id:
+                        if author_name.startswith("moderator") or nick_lower.startswith("moderator") or "moderator" in author_name or "moderator" in nick_lower:
+                            trigger_violation = True
+                            violation_reason = f"تم رصد إداري مسبق (`{author.get('username')}`)."
+                        else:
+                            trigger_violation = True
+                            violation_reason = "شخص آخر سبقك بالرد."
+
+            if trigger_violation:
+                requests.delete(f"{API}/{ch_id}/messages/{sent_msg_id}", headers=headers, timeout=3)
+                
+                ticket_url = f"https://discord.com/channels/{SERVER_ID}/{ch_id}"
+                alert_payload = {
+                    "content": f"🛡️ **تنبيه الحماية السريعة (Elite Shield)**:\n• المستخدم: `{username}`\n• التكت: `#{ticket_name}`\n• الإجراء: **تم سحب وحذف الرسالة بنجاح**\n• الرابط: {ticket_url}"
+                }
+                safe_post(token, f"{API}/{DEFAULT_ALERT_CHANNEL}/messages", alert_payload, 0.03, username)
+                
+                with state_lock:
+                    user_sessions[username]["logs"].append(f"🛡️ [Purge Guard] تم سحب رسالة #{ticket_name} لحماية السجل.")
+    except Exception:
+        pass
 
 def process_ticket(username, token, ch_id, name):
-    if username in ["Isso", "Osama"]:
-        is_admin_complaint = check_ticket_content_for_complaint(token, ch_id, username)
-        if not is_admin_complaint:
-            return  
-    else:
-        is_admin_complaint = check_ticket_content_for_complaint(token, ch_id, "Isso")
-        if is_admin_complaint:
-            return  
-
     with state_lock:
         session_data = user_sessions[username]
         if not session_data["running"] or session_data["banned_secure"]:
@@ -206,7 +209,7 @@ def process_ticket(username, token, ch_id, name):
         if session_data["cooldown_mode"]:
             if session_data["skip_next"]:
                 session_data["skip_next"] = False
-                session_data["logs"].append(f"⚡ [Stealth Cooldown] تم تخطي التكت `#{name}`.")
+                session_data["logs"].append(f"⚡ [Cooldown] تم تخطي التكت `#{name}`.")
                 return
             else:
                 session_data["skip_next"] = True
@@ -226,33 +229,40 @@ def process_ticket(username, token, ch_id, name):
     else:
         custom_msg = session_data["message"]
     
-    # 🛡️ نظام تفادي التكرار الذكي (Anti-Pattern Duplicate Guard)
-    # يمنع إرسال نفس النص بالحرف تماماً مرتين متلاحقتين في أقل من ثانيتين لمنع فلاتر السبام الديسكوردية
     now_ts = time.time()
     if session_data["last_sent_text"] == custom_msg and (now_ts - session_data["last_sent_time"] < 2.0):
-        # إضافة تطريف خفيف جداً (طابع عشوائي مخفي) لتغيير البصمة النصية فوراً بدون تغيير المعنى
-        custom_msg += " " * random.randint(1, 3)
+        custom_msg += "᠎" * random.randint(1, 2)
     
     session_data["last_sent_text"] = custom_msg
     session_data["last_sent_time"] = now_ts
+
+    channel_creation_time = ((int(ch_id) >> 22) + 1420070400000) / 1000.0
 
     res = safe_post(token, f"{API}/{ch_id}/messages", {"content": custom_msg}, current_speed, username)
     
     with state_lock:
         if res and res.status_code in [200, 201]:
+            res_data = res.json()
+            sent_msg_id = res_data.get("id")
+            
+            headers_me = get_secure_headers(token)
+            me_res = requests.get("https://discord.com/api/v9/users/@me", headers=headers_me, timeout=3)
+            current_user_id = me_res.json().get("id") if me_res.status_code == 200 else None
+
+            if current_user_id and sent_msg_id:
+                threading.Thread(target=verify_and_purge_if_late, args=(token, ch_id, sent_msg_id, current_user_id, username, name, channel_creation_time), daemon=True).start()
+
             ticket_url = f"https://discord.com/channels/{SERVER_ID}/{ch_id}"
-            log_text = f"🎯 تم استلام تكت **#{name}** | <a href='{ticket_url}' target='_blank'>رابط التكت</a>"
+            log_text = f"✨ تم استلام تكت بنجاح **#{name}** | <a href='{ticket_url}' target='_blank'>رابط التكت</a>"
             
             global master_global_audit
-            audit_entry = f"[{username}] استلم تكت <b>#{name}</b> | <a href='{ticket_url}' target='_blank'>رابط</a>"
+            audit_entry = f"[{username}] استلم تكت <b>#{name}</b> | <a href='{ticket_url}' target='_blank'>رابط مباشر</a>"
             master_global_audit.insert(0, audit_entry)
             if len(master_global_audit) > 50:
                 master_global_audit.pop()
             
-            if username in LOG_CHANNELS:
-                alert_channel_id = LOG_CHANNELS[username]
-                alert_payload = {"content": f"🚨 **{username}** استلم تكت جديد:\n• اسم التكت: `#{name}`\n• الرابط: {ticket_url}"}
-                safe_post(token, f"{API}/{alert_channel_id}/messages", alert_payload, current_speed, username)
+            alert_payload = {"content": f"💎 **{username}** قام باستلام تكت جديد:\n• اسم التكت: `#{name}`\n• الرابط: {ticket_url}"}
+            safe_post(token, f"{API}/{DEFAULT_ALERT_CHANNEL}/messages", alert_payload, current_speed, username)
 
             if session_data["count"] < session_data["max_tickets"]:
                 session_data["count"] += 1
@@ -260,10 +270,10 @@ def process_ticket(username, token, ch_id, name):
                 session_data["logs"].append(f"{log_text} (العدد: {session_data['count']}/{session_data['max_tickets']})")
                 if session_data["count"] >= session_data["max_tickets"]:
                     session_data["running"] = False
-                    session_data["logs"].append("🛑 تم الوصول للحد الأقصى المحدد، توقف البوت.")
+                    session_data["logs"].append("🛑 تم بلوغ الحد الأقصى المحدد للتكتات، توقف النظام.")
         else:
             status_code = res.status_code if res else "خطأ اتصال"
-            session_data["logs"].append(f"<span style='color: #ef4444;'>❌ خطأ في استلام التكت #{name} (كود الحالة: {status_code})</span>")
+            session_data["logs"].append(f"<span style='color: #f43f5e;'>❌ تعذر استلام التكت #{name} (كود الحالة: {status_code})</span>")
         
     with state_lock:
         if ch_id in active_tickets:
@@ -271,11 +281,8 @@ def process_ticket(username, token, ch_id, name):
 
 def run_discord_bot(username):
     token = user_sessions[username]["token"]
+    user_sessions[username]["logs"].append("🚀 [Elite System] تم تفعيل نظام الاستلام والدرع السيبراني...")
     
-    # إقلاع فوري آمن بدون تأخير طويل حتى لا يسبقك أحد للتكت
-    user_sessions[username]["logs"].append("🛡️ [Stealth Engine] تشغيل المحرك السريع والآمن بنجاح...")
-    
-    # تشغيل مراقب التوكن بالخلفية
     threading.Thread(target=background_token_watcher, args=(username,), daemon=True).start()
 
     def on_message(ws, msg):
@@ -303,7 +310,6 @@ def run_discord_bot(username):
             pass
 
     def on_open(ws):
-        profile = random.choice(STEALTH_DEVICE_PROFILES)
         payload = {
             "op": 2,
             "d": {
@@ -333,64 +339,71 @@ PANEL_HTML = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>لوحة التحكم المرعبة - درع الحماية الذكي</title>
+    <title>لوحة القيادة المركزية - Elite Operations</title>
     <style>
-        body { background: radial-gradient(circle at center, #0f0202 0%, #030303 100%); color: #f1f5f9; font-family: Tahoma, sans-serif; text-align: center; margin: 0; padding: 15px; min-height: 100vh; }
-        .card { background: linear-gradient(180deg, #0d0404 0%, #030202 100%); max-width: 440px; margin: 0 auto; padding: 22px; border-radius: 18px; border: 1px solid #7f1d1d; box-shadow: 0 25px 50px rgba(0,0,0,0.95), 0 0 35px rgba(220, 38, 38, 0.2); }
-        .logo-glow { width: 75px; height: 75px; margin: 0 auto 10px auto; background: linear-gradient(135deg, #dc2626, #7f1d1d); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 32px; box-shadow: 0 0 20px rgba(220, 38, 38, 0.6); border: 2px solid #f87171; }
-        h1 { color: #ef4444; font-size: 19px; margin-bottom: 2px; text-shadow: 0 2px 10px rgba(239, 68, 68, 0.5); }
-        .user-tag { color: #34d399; font-size: 13px; margin-bottom: 12px; font-weight: bold; }
-        .speed-badge { background: #050202; border: 1px solid #450a0a; padding: 10px; border-radius: 10px; font-size: 12px; color: #fca5a5; margin-bottom: 8px; }
-        .stats-badge { background: #050202; border: 1px solid #450a0a; padding: 6px; border-radius: 8px; font-size: 11px; color: #38bdf8; margin-bottom: 12px; }
-        .btn { display: block; width: 100%; padding: 12px; margin: 8px 0; font-size: 14px; font-weight: bold; border: none; border-radius: 10px; cursor: pointer; text-decoration: none; transition: all 0.2s ease; }
-        .btn-start { background: linear-gradient(135deg, #059669, #047857); color: white; box-shadow: 0 4px 15px rgba(5, 150, 105, 0.4); }
-        .btn-stop { background: linear-gradient(135deg, #dc2626, #991b1b); color: white; box-shadow: 0 4px 15px rgba(220, 38, 38, 0.4); }
-        .btn-turbo { background: linear-gradient(135deg, #7c3aed, #5b21b6); color: white; box-shadow: 0 4px 15px rgba(124, 58, 237, 0.4); }
-        .btn-cooldown-on { background: linear-gradient(135deg, #2563eb, #1e40af); color: white; }
-        .btn-cooldown-off { background: linear-gradient(135deg, #181212, #261919); color: #94a3b8; border: 1px solid #475569; }
-        .btn-silent-on { background: linear-gradient(135deg, #9a3412, #7c2d12); color: white; }
-        .btn-silent-off { background: linear-gradient(135deg, #181212, #261919); color: #94a3b8; border: 1px solid #475569; }
-        .btn-reset { background: linear-gradient(135deg, #b45309, #78350f); color: white; }
-        .btn-clear { background: linear-gradient(135deg, #334155, #1e293b); color: #f87171; border: 1px solid #475569; }
-        .btn-token { background: linear-gradient(135deg, #0284c7, #0369a1); color: white; }
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap');
+        body { background: linear-gradient(135deg, #07090e 0%, #020407 100%); color: #e2e8f0; font-family: 'Cairo', sans-serif; text-align: center; margin: 0; padding: 15px; min-height: 100vh; }
+        .card { background: linear-gradient(180deg, #101622 0%, #090d16 100%); max-width: 440px; margin: 0 auto; padding: 24px; border-radius: 20px; border: 1px solid #1e293b; box-shadow: 0 25px 60px rgba(0,0,0,0.8), 0 0 40px rgba(59, 130, 246, 0.15); }
+        .logo-glow { width: 80px; height: 80px; margin: 0 auto 12px auto; background: linear-gradient(135deg, #3b82f6, #1d4ed8); border-radius: 24px; display: flex; align-items: center; justify-content: center; font-size: 34px; box-shadow: 0 0 25px rgba(59, 130, 246, 0.5); border: 2px solid #60a5fa; }
+        h1 { color: #f8fafc; font-size: 21px; margin-bottom: 2px; font-weight: 900; letter-spacing: 0.5px; }
+        .user-tag { color: #38bdf8; font-size: 13px; margin-bottom: 14px; font-weight: 700; background: #0c1527; display: inline-block; padding: 4px 12px; border-radius: 20px; border: 1px solid #1d4ed8; }
+        .speed-badge { background: #0b111e; border: 1px solid #1e293b; padding: 11px; border-radius: 12px; font-size: 12px; color: #94a3b8; margin-bottom: 8px; font-weight: 600; }
+        .speed-badge b { color: #38bdf8; }
+        .stats-badge { background: #0b111e; border: 1px solid #1e293b; padding: 8px; border-radius: 10px; font-size: 11px; color: #cbd5e1; margin-bottom: 14px; }
+        .stats-badge b { color: #34d399; }
+        .btn { display: block; width: 100%; padding: 12px; margin: 9px 0; font-size: 14px; font-weight: 700; border: none; border-radius: 12px; cursor: pointer; text-decoration: none; transition: all 0.25s ease; font-family: 'Cairo', sans-serif; }
+        .btn:hover { transform: translateY(-2px); filter: brightness(1.1); }
+        .btn-start { background: linear-gradient(135deg, #10b981, #059669); color: white; box-shadow: 0 4px 20px rgba(16, 185, 129, 0.35); }
+        .btn-stop { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; box-shadow: 0 4px 20px rgba(239, 68, 68, 0.35); }
+        .btn-turbo { background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: white; box-shadow: 0 4px 20px rgba(139, 92, 246, 0.35); }
+        .btn-cooldown-on { background: linear-gradient(135deg, #2563eb, #1d4ed8); color: white; }
+        .btn-cooldown-off { background: linear-gradient(135deg, #131b2e, #1e293b); color: #94a3b8; border: 1px solid #334155; }
+        .btn-silent-on { background: linear-gradient(135deg, #d97706, #b45309); color: white; }
+        .btn-silent-off { background: linear-gradient(135deg, #131b2e, #1e293b); color: #94a3b8; border: 1px solid #334155; }
+        .btn-reset { background: linear-gradient(135deg, #d97706, #b45309); color: white; }
+        .btn-clear { background: linear-gradient(135deg, #1e293b, #0f172a); color: #f87171; border: 1px solid #334155; }
+        .btn-token { background: linear-gradient(135deg, #0ea5e9, #0284c7); color: white; }
         .btn-emergency { background: linear-gradient(135deg, #7f1d1d, #450a0a); color: #fecaca; border: 1px solid #ef4444; }
-        .speed-row { display: flex; justify-content: space-between; gap: 6px; margin: 4px 0; }
-        .btn-speed-up, .btn-speed-down { flex: 1; padding: 8px; background: #080303; border: 1px solid #450a0a; color: #34d399; font-size: 12px; font-weight: bold; border-radius: 8px; cursor: pointer; }
-        .config-section { text-align: right; margin-top: 10px; background: #060202; padding: 10px; border-radius: 10px; border: 1px solid #450a0a; }
-        .config-title { color: #f87171; font-size: 11px; margin-bottom: 4px; font-weight: bold; }
-        input[type="text"], input[type="password"], input[type="number"], textarea, select { width: 100%; padding: 8px; background: #020101; border: 1px solid #450a0a; color: #f1f5f9; border-radius: 8px; box-sizing: border-box; font-size: 11px; text-align: center; outline: none; margin-bottom: 5px; }
-        textarea { height: 55px; text-align: right; resize: none; }
-        .btn-save { width: 100%; padding: 8px; margin-top: 4px; background: linear-gradient(135deg, #b45309, #78350f); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 11px; }
-        .log-title { color: #f87171; font-size: 11px; margin-top: 10px; text-align: right; font-weight: bold; }
-        .log-box { background: #020101; border: 1px solid #450a0a; border-radius: 9px; padding: 8px; height: 95px; overflow-y: auto; text-align: right; font-size: 10px; color: #94a3b8; margin-top: 4px; box-shadow: inset 0 2px 6px rgba(0,0,0,0.9); }
-        .log-box a { color: #38bdf8; text-decoration: underline; }
-        .logout-btn { color: #ef4444; font-size: 11px; display: block; margin-top: 14px; text-decoration: none; font-weight: bold; }
-        .section-box { border: 1px dashed #7f1d1d; border-radius: 12px; padding: 10px; margin-top: 12px; background: #060202; text-align: right; }
+        .speed-row { display: flex; justify-content: space-between; gap: 8px; margin: 6px 0; }
+        .btn-speed-up, .btn-speed-down { flex: 1; padding: 9px; background: #0b111e; border: 1px solid #1e293b; color: #34d399; font-size: 12px; font-weight: 700; border-radius: 10px; cursor: pointer; font-family: 'Cairo', sans-serif; transition: 0.2s; }
+        .btn-speed-up:hover, .btn-speed-down:hover { background: #131b2e; }
+        .config-section { text-align: right; margin-top: 12px; background: #0b111e; padding: 12px; border-radius: 14px; border: 1px solid #1e293b; }
+        .config-title { color: #38bdf8; font-size: 11px; margin-bottom: 5px; font-weight: 700; }
+        input[type="text"], input[type="password"], input[type="number"], textarea, select { width: 100%; padding: 9px; background: #05080d; border: 1px solid #1e293b; color: #f1f5f9; border-radius: 10px; box-sizing: border-box; font-size: 11px; text-align: center; outline: none; margin-bottom: 6px; font-family: 'Cairo', sans-serif; }
+        input:focus, textarea:focus, select:focus { border-color: #3b82f6; }
+        textarea { height: 60px; text-align: right; resize: none; }
+        .btn-save { width: 100%; padding: 9px; margin-top: 4px; background: linear-gradient(135deg, #f59e0b, #d97706); color: white; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 11px; font-family: 'Cairo', sans-serif; }
+        .log-title { color: #38bdf8; font-size: 11px; margin-top: 12px; text-align: right; font-weight: 700; }
+        .log-box { background: #05080d; border: 1px solid #1e293b; border-radius: 11px; padding: 9px; height: 105px; overflow-y: auto; text-align: right; font-size: 10px; color: #94a3b8; margin-top: 5px; box-shadow: inset 0 2px 6px rgba(0,0,0,0.8); }
+        .log-box a { color: #38bdf8; text-decoration: underline; font-weight: 600; }
+        .logout-btn { color: #f43f5e; font-size: 12px; display: block; margin-top: 16px; text-decoration: none; font-weight: 700; transition: 0.2s; }
+        .logout-btn:hover { color: #fb7185; }
+        .section-box { border: 1px dashed #334155; border-radius: 14px; padding: 12px; margin-top: 14px; background: #0b111e; text-align: right; }
     </style>
     <script>
-        function confirmReset() { return confirm("هل تريد إعادة تعيين التكتات والأخطاء بالكامل؟"); }
-        function confirmEmergency() { return confirm("⚠️ تحذير: هل أنت متأكد من إيقاف جميع البوتات لكل الحسابات فوراً؟"); }
+        function confirmReset() { return confirm("هل أنت متأكد من إعادة تعيين العدادات والأخطاء؟"); }
+        function confirmEmergency() { return confirm("⚠️ تحذير: هل تريد إيقاف كافة العمليات لكل الحسابات حالاً؟"); }
     </script>
 </head>
 <body>
     <div class="card">
         <div class="logo-glow">🛡️</div>
-        <h1>درع الحماية الذكي</h1>
+        <h1>منظومة الإدارة العليا</h1>
         <div class="user-tag">الحساب النشط: {{ username }}</div>
         
-        <div class="speed-badge">تم استلام: <b>{{ count }}/{{ max_tickets }}</b> | السرعة الفائقة: <b>{{ speed }}ث</b></div>
-        <div class="stats-badge">📊 إجمالي الإنجاز التراكمي: <b>{{ total_lifetime }} تكت</b> | الأخطاء: <b>{{ rate_errors }}</b></div>
+        <div class="speed-badge">تم إنجاز: <b>{{ count }}/{{ max_tickets }}</b> | سرعة الاستجابة: <b>{{ speed }}ث</b></div>
+        <div class="stats-badge">📊 الإجمالي التراكمي: <b>{{ total_lifetime }} تكت</b> | الأخطاء: <b>{{ rate_errors }}</b></div>
         
         <form action="/toggle" method="post">
             {% if running %}
-                <button type="submit" class="btn btn-stop">إيقاف البوت 🛑</button>
+                <button type="submit" class="btn btn-stop">إيقاف النظام 🛑</button>
             {% else %}
-                <button type="submit" class="btn btn-start">تشغيل البوت بحماية 🚀</button>
+                <button type="submit" class="btn btn-start">تشغيل النظام الآلي 🚀</button>
             {% endif %}
         </form>
 
         <form action="/turbo" method="post">
-            <button type="submit" class="btn btn-turbo">⚡ تفعيل وضع السرعة القصوى (0.03ث)</button>
+            <button type="submit" class="btn btn-turbo">⚡ تفعيل السرعة القصوى (0.03ث)</button>
         </form>
 
         <div class="speed-row">
@@ -400,9 +413,9 @@ PANEL_HTML = """
 
         <form action="/toggle_cooldown" method="post">
             {% if cooldown_mode %}
-                <button type="submit" class="btn btn-cooldown-on">🛡️ نظام التخطي (مفعل)</button>
+                <button type="submit" class="btn btn-cooldown-on">🛡️ نظام التخطي الذكي (مفعل)</button>
             {% else %}
-                <button type="submit" class="btn btn-cooldown-off">🛡️ نظام التخطي (معطل)</button>
+                <button type="submit" class="btn btn-cooldown-off">🛡️ نظام التخطي الذكي (معطل)</button>
             {% endif %}
         </form>
 
@@ -416,70 +429,70 @@ PANEL_HTML = """
 
         <div class="config-section">
             <form action="/update_settings" method="post">
-                <div class="config-title">تحديد حد التكتات الأقصى:</div>
+                <div class="config-title">الحد الأقصى للتكتات:</div>
                 <input type="number" name="max_tickets" value="{{ max_tickets }}" min="1" max="100">
                 
-                <div class="config-title">تحديد السرعة بالثواني:</div>
-                <input type="number" step="0.01" name="custom_speed" value="{{ speed }}" min="0.02" max="10.0" style="margin-bottom: 5px;">
+                <div class="config-title">ضبط سرعة الاستجابة بالثواني:</div>
+                <input type="number" step="0.01" name="custom_speed" value="{{ speed }}" min="0.02" max="10.0" style="margin-bottom: 6px;">
 
-                <div class="config-title">اختر قالب الرد السريـع:</div>
+                <div class="config-title">قالب الرد التلقائي:</div>
                 <select name="reply_template" style="margin-bottom: 6px;">
-                    <option value="default" {% if reply_template == 'default' %}selected{% endif %}>الرسالة المخصصة (أسفله)</option>
-                    <option value="evidence_req" {% if reply_template == 'evidence_req' %}selected{% endif %}>طلب دلائل الشكاوى (تصوير السيرفرات والجواز)</option>
+                    <option value="default" {% if reply_template == 'default' %}selected{% endif %}>النص المخصص (الأساسي)</option>
+                    <option value="evidence_req" {% if reply_template == 'evidence_req' %}selected{% endif %}>طلب أدلة الشكاوى والمقاطع</option>
                     <option value="review_wait" {% if reply_template == 'review_wait' %}selected{% endif %}>جاري مراجعة الطلب (تحلى بالصبر)</option>
-                    <option value="ban_evidence" {% if reply_template == 'ban_evidence' %}selected{% endif %}>طلب دليل الحظر من إدارة الخادم</option>
+                    <option value="ban_evidence" {% if reply_template == 'ban_evidence' %}selected{% endif %}>طلب تفاصيل الحظر للإدارة</option>
                 </select>
 
-                <div class="config-title">أو تخصيص نص الرسالة يدوياً:</div>
+                <div class="config-title">تخصيص نص الرد يدوياً:</div>
                 <textarea name="custom_msg">{{ message }}</textarea>
                 <button type="submit" class="btn-save">حفظ الإعدادات 💾</button>
             </form>
         </div>
 
-        <form action="/reset_all" method="post" onsubmit="return confirmReset();"><button type="submit" class="btn btn-reset">🗑️ إعادة تعيين التكتات والأخطاء</button></form>
-        <form action="/clear_logs" method="post"><button type="submit" class="btn btn-clear">🧹 تفريغ السجل فقط</button></form>
+        <form action="/reset_all" method="post" onsubmit="return confirmReset();"><button type="submit" class="btn btn-reset">🗑️ تصفير العدادات والأخطاء</button></form>
+        <form action="/clear_logs" method="post"><button type="submit" class="btn btn-clear">🧹 مسح السجل الحالي</button></form>
         
-        <div style="display: flex; gap: 6px; margin: 8px 0;">
+        <div style="display: flex; gap: 8px; margin: 9px 0;">
             <form action="/token" method="get" style="flex:1;"><button type="submit" class="btn btn-token" style="margin:0;">🔑 تعديل التوكن</button></form>
-            <form action="/check_token" method="post" style="flex:1;"><button type="submit" class="btn" style="margin:0; background: linear-gradient(135deg, #047857, #065f46);">🔍 فحص صحة التوكن</button></form>
+            <form action="/check_token" method="post" style="flex:1;"><button type="submit" class="btn" style="margin:0; background: linear-gradient(135deg, #059669, #047857);">🔍 فحص التوكن</button></form>
         </div>
 
-        {% if username == "Marshall" %}
+        {% if username == "Saif" or username == "Marshall" %}
         <div class="section-box">
-            <div class="config-title" style="color: #ef4444; font-size: 12px; margin-bottom: 8px;">👑 لوحة القيادة العليا (Marshall Admin):</div>
-            <form action="/emergency_stop" method="post" onsubmit="return confirmEmergency();" style="margin-bottom: 8px;"><button type="submit" class="btn btn-emergency">🚨 طوارئ عامة (إيقاف كل الحسابات)</button></form>
-            <form action="/create_account" method="post" style="background: #020101; padding: 8px; border-radius: 8px; border: 1px solid #7f1d1d; margin-bottom: 8px;">
-                <div class="config-title">➕ إنشاء حساب جديد للنظام:</div>
+            <div class="config-title" style="color: #f59e0b; font-size: 12px; margin-bottom: 8px;">👑 لوحة القيادة العليا والتحكم الإداري:</div>
+            <form action="/emergency_stop" method="post" onsubmit="return confirmEmergency();" style="margin-bottom: 8px;"><button type="submit" class="btn btn-emergency">🚨 طوارئ عامة (إيقاف كافة الحسابات)</button></form>
+            <form action="/create_account" method="post" style="background: #05080d; padding: 9px; border-radius: 10px; border: 1px solid #1e293b; margin-bottom: 8px;">
+                <div class="config-title">➕ إضافة حساب جديد للمنظومة:</div>
                 <input type="text" name="new_user" placeholder="اسم المستخدم" required>
-                <input type="password" name="new_pass" placeholder="الرمز السري" required>
-                <textarea name="new_token" placeholder="التوكن..." style="height: 40px;" required></textarea>
-                <button type="submit" class="btn-save" style="background: linear-gradient(135deg, #059669, #047857);">إنشاء الحساب 🚀</button>
+                <input type="password" name="new_pass" placeholder="كلمة المرور" required>
+                <textarea name="new_token" placeholder="توكن الحساب..." style="height: 45px;" required></textarea>
+                <button type="submit" class="btn-save" style="background: linear-gradient(135deg, #10b981, #059669);">حفظ الحساب الجديد 🚀</button>
             </form>
-            <form action="/manage_member_action" method="post" style="background: #020101; padding: 8px; border-radius: 8px; border: 1px solid #7f1d1d; margin-bottom: 8px;">
-                <div class="config-title">👥 إدارة الأعضاء والتحكم الفردي:</div>
+            <form action="/manage_member_action" method="post" style="background: #05080d; padding: 9px; border-radius: 10px; border: 1px solid #1e293b; margin-bottom: 8px;">
+                <div class="config-title">👥 إدارة الأفراد والأعضاء:</div>
                 <select name="target_member" style="margin-bottom: 6px;">
                     {% for member in all_users %}<option value="{{ member }}">{{ member }}</option>{% endfor %}
                 </select>
-                <div style="display: flex; gap: 5px;">
+                <div style="display: flex; gap: 6px;">
                     <button type="submit" name="action_type" value="stats" class="btn-save" style="background: #2563eb; flex: 1;">الإحصائيات 📊</button>
-                    <button type="submit" name="action_type" value="kick" class="btn-save" style="background: #dc2626; flex: 1;" onclick="return confirm('طرد نهائي؟');">طرد 🚪</button>
+                    <button type="submit" name="action_type" value="kick" class="btn-save" style="background: #dc2626; flex: 1;" onclick="return confirm('هل تريد طرد هذا الحساب نهائياً؟');">حذف 🚪</button>
                 </div>
             </form>
-            {% if selected_member_info %}<div style="margin-top: 6px; font-size: 10px; color: #34d399; font-weight: bold; background: #020101; padding: 6px; border-radius: 6px; border: 1px solid #7f1d1d;">{{ selected_member_info | safe }}</div>{% endif %}
-            <div class="config-title" style="color: #38bdf8; margin-top: 10px;">🛡️ سجل الأمان (Stealth Guard):</div>
-            <div class="log-box" style="height: 75px; border-color: #1e3a8a;">
-                {% for sec in security_logs %}<div>• {{ sec | safe }}</div>{% else %}<div style="color: #444; text-align: center; margin-top: 20px;">لا توجد تنبيهات أمنية...</div>{% endfor %}
+            {% if selected_member_info %}<div style="margin-top: 6px; font-size: 10px; color: #34d399; font-weight: 700; background: #05080d; padding: 7px; border-radius: 8px; border: 1px solid #1e293b;">{{ selected_member_info | safe }}</div>{% endif %}
+            <div class="config-title" style="color: #38bdf8; margin-top: 10px;">🛡️ السجل الأمني المباشر:</div>
+            <div class="log-box" style="height: 80px; border-color: #1e3a8a;">
+                {% for sec in security_logs %}<div>• {{ sec | safe }}</div>{% else %}<div style="color: #555; text-align: center; margin-top: 22px;">لا توجد تنبيهات أمنية حالية...</div>{% endfor %}
             </div>
             <div class="config-title" style="color: #38bdf8; margin-top: 10px;">🌐 سجل العمليات العام:</div>
-            <div class="log-box" style="height: 90px; border-color: #1e3a8a;">
-                {% for item in global_audit %}<div>• {{ item | safe }}</div>{% else %}<div style="color: #444; text-align: center; margin-top: 25px;">لا توجد تكتات مسجلة...</div>{% endfor %}
+            <div class="log-box" style="height: 95px; border-color: #1e3a8a;">
+                {% for item in global_audit %}<div>• {{ item | safe }}</div>{% else %}<div style="color: #555; text-align: center; margin-top: 28px;">لا توجد عمليات مسجلة...</div>{% endfor %}
             </div>
         </div>
         {% endif %}
 
-        <div class="log-title">سجل العمليات وحالة الدرع الآمن:</div>
+        <div class="log-title">سجل العمليات وحالة النظام اللحظية:</div>
         <div class="log-box">
-            {% for item in logs %}<div>• {{ item | safe }}</div>{% else %}<div style="color: #444; text-align: center; margin-top: 25px;">البوت في وضع الاستعداد والجاهزية الآمنة...</div>{% endfor %}
+            {% for item in logs %}<div>• {{ item | safe }}</div>{% else %}<div style="color: #555; text-align: center; margin-top: 30px;">النظام جاهز وفي انتظار التكتات...</div>{% endfor %}
         </div>
         <a href="/logout" class="logout-btn">تسجيل خروج من الحساب 🚪</a>
     </div>
@@ -488,15 +501,41 @@ PANEL_HTML = """
 """
 
 LOGIN_HTML = """
-<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>تسجيل الدخول</title>
-<style>body{background:#030303;color:#fff;font-family:Tahoma;text-align:center;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.card{background:#0d0404;width:320px;padding:22px;border-radius:14px;border:1px solid #7f1d1d;box-shadow:0 15px 35px rgba(0,0,0,0.9)}input{width:100%;padding:10px;margin:8px 0;background:#020101;border:1px solid #450a0a;color:#fff;border-radius:8px;text-align:center;box-sizing:border-box;outline:none}.btn{width:100%;padding:11px;margin-top:10px;background:linear-gradient(135deg, #dc2626, #991b1b);color:#fff;border:none;border-radius:8px;font-weight:bold;cursor:pointer}</style></head>
-<body><div class="card"><h2 style="color:#ef4444; margin-top:0;">تسجيل الدخول الآمن</h2><form method="POST"><input type="text" name="username" placeholder="اسم المستخدم" required><input type="password" name="password" placeholder="الرمز السري" required><button type="submit" class="btn">دخول للنظام</button></form></div></body></html>
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>تسجيل الدخول الآمن - Elite Operations</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap');
+        body { background: linear-gradient(135deg, #05070a 0%, #010204 100%); color: #f8fafc; font-family: 'Cairo', sans-serif; text-align: center; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: linear-gradient(145deg, #0f1523 0%, #080b12 100%); width: 350px; padding: 28px; border-radius: 22px; border: 1px solid #1e293b; box-shadow: 0 30px 60px rgba(0,0,0,0.9), 0 0 35px rgba(59, 130, 246, 0.2); }
+        .login-logo { width: 70px; height: 70px; margin: 0 auto 15px auto; background: linear-gradient(135deg, #3b82f6, #1d4ed8); border-radius: 20px; display: flex; align-items: center; justify-content: center; font-size: 30px; box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); border: 2px solid #60a5fa; }
+        input { width: 100%; padding: 12px; margin: 10px 0; background: #05080d; border: 1px solid #1e293b; color: #f8fafc; border-radius: 11px; text-align: center; box-sizing: border-box; outline: none; font-size: 13px; font-family: 'Cairo', sans-serif; transition: 0.3s; }
+        input:focus { border-color: #3b82f6; box-shadow: 0 0 10px rgba(59, 130, 246, 0.3); }
+        .btn { width: 100%; padding: 13px; margin-top: 14px; background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: #fff; border: none; border-radius: 11px; font-weight: 700; cursor: pointer; font-size: 14px; font-family: 'Cairo', sans-serif; box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4); transition: 0.2s; }
+        .btn:hover { transform: translateY(-2px); filter: brightness(1.1); }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="login-logo">🛡️</div>
+        <h2 style="color: #f8fafc; margin-top: 0; font-size: 19px; font-weight: 900;">بوابة الدخول الآمنة</h2>
+        <p style="color: #64748b; font-size: 11px; margin-bottom: 18px;">منظومة إدارة التكتات المتقدمة</p>
+        <form method="POST">
+            <input type="text" name="username" placeholder="اسم المستخدم (Username)" required>
+            <input type="password" name="password" placeholder="كلمة المرور (Password)" required>
+            <button type="submit" class="btn">تسجيل الدخول 🚀</button>
+        </form>
+    </div>
+</body>
+</html>
 """
 
 TOKEN_HTML = """
 <!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>تعديل التوكن</title>
-<style>body{background:#030303;color:#fff;font-family:Tahoma;text-align:center;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.card{background:#0d0404;width:340px;padding:22px;border-radius:14px;border:1px solid #7f1d1d;box-shadow:0 15px 35px rgba(0,0,0,0.9)}textarea{width:100%;height:75px;background:#020101;border:1px solid #450a0a;color:#fff;border-radius:8px;text-align:center;resize:none;box-sizing:border-box;font-size:11px;outline:none}.btn{width:100%;padding:11px;margin-top:10px;background:linear-gradient(135deg, #0284c7, #0369a1);color:#fff;border:none;border-radius:8px;font-weight:bold;cursor:pointer}</style></head>
-<body><div class="card"><h2 style="color:#38bdf8; margin-top:0;">تعديل توكن الحساب</h2><form method="POST"><textarea name="token" placeholder="الصق التوكن..." required></textarea><button type="submit" class="btn">حفظ وتحديث التوكن</button></form></div></body></html>
+<style>@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');body{background:#020407;color:#fff;font-family:'Cairo',sans-serif;text-align:center;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.card{background:#0f1523;width:350px;padding:25px;border-radius:18px;border:1px solid #1e293b;box-shadow:0 20px 40px rgba(0,0,0,0.9)}textarea{width:100%;height:80px;background:#05080d;border:1px solid #1e293b;color:#fff;border-radius:10px;text-align:center;resize:none;box-sizing:border-box;font-size:11px;outline:none;font-family:'Cairo',sans-serif;padding:8px}.btn{width:100%;padding:12px;margin-top:12px;background:linear-gradient(135deg, #0ea5e9, #0284c7);color:#fff;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-family:'Cairo',sans-serif;}</style></head>
+<body><div class="card"><h2 style="color:#38bdf8; margin-top:0; font-size:17px;">تحديث توكن الحساب</h2><form method="POST"><textarea name="token" placeholder="الصق التوكن هنا..." required></textarea><button type="submit" class="btn">حفظ التوكن الجديد</button></form></div></body></html>
 """
 
 @app.route('/', methods=['GET', 'POST'])
@@ -518,7 +557,7 @@ def set_token():
     if 'user' not in session: return redirect(url_for('login'))
     if request.method == 'POST':
         user_sessions[session['user']]["token"] = request.form.get('token').strip()
-        user_sessions[session['user']]["logs"].append("🔑 تم تحديث وتعديل توكن الحساب بنجاح.")
+        user_sessions[session['user']]["logs"].append("🔑 تم تحديث توكن الحساب بنجاح.")
         return redirect(url_for('panel'))
     return render_template_string(TOKEN_HTML)
 
@@ -604,14 +643,14 @@ def clear_logs():
 
 @app.route('/emergency_stop', methods=['POST'])
 def emergency_stop():
-    if 'user' in session and session['user'] == "Marshall":
+    if 'user' in session and (session['user'] == "Saif" or session['user'] == "Marshall"):
         for u in user_sessions:
             user_sessions[u]["running"] = False
     return redirect(url_for('panel'))
 
 @app.route('/create_account', methods=['POST'])
 def create_account():
-    if 'user' in session and session['user'] == "Marshall":
+    if 'user' in session and (session['user'] == "Saif" or session['user'] == "Marshall"):
         new_u = request.form.get('new_user', '').strip()
         new_p = request.form.get('new_pass', '').strip()
         new_t = request.form.get('new_token', '').strip()
@@ -619,24 +658,25 @@ def create_account():
             USERS[new_u] = new_p
             user_sessions[new_u] = {
                 "running": False, "speed": 0.05, "thread": None, "token": new_t,
-                "message": f"أهلاً بك معك {new_u} من فريق الإدارة كيف أساعدك",
+                "message": f"أهلاً بك، معك {new_u} الإدارة العليا.",
                 "reply_template": "default", "logs": [], "count": 0, "total_lifetime": 0, 
-                "max_tickets": 5, "cooldown_mode": False, "skip_next": False, 
+                "max_tickets": 10, "cooldown_mode": False, "skip_next": False, 
                 "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False,
                 "last_sent_text": "", "last_sent_time": 0
             }
+            LOG_CHANNELS[new_u] = DEFAULT_ALERT_CHANNEL
     return redirect(url_for('panel'))
 
 @app.route('/manage_member_action', methods=['POST'])
 def manage_member_action():
-    if 'user' in session and session['user'] == "Marshall":
+    if 'user' in session and (session['user'] == "Saif" or session['user'] == "Marshall"):
         target = request.form.get('target_member')
         action = request.form.get('action_type')
         if target in user_sessions:
             if action == 'stats':
                 d = user_sessions[target]
-                session['selected_member_info'] = f"({target}): إجمالي <b>{d['total_lifetime']}</b>، الحالي <b>{d['count']}/{d['max_tickets']}</b>"
-            elif action == 'kick' and target != "Marshall":
+                session['selected_member_info'] = f"({target}): إجمالي الإنجاز <b>{d['total_lifetime']}</b>، الحالي <b>{d['count']}/{d['max_tickets']}</b>"
+            elif action == 'kick' and target != "Saif" and target != "Marshall":
                 user_sessions[target]["running"] = False
                 user_sessions[target]["kicked"] = True
                 user_sessions[target]["token"] = ""
@@ -665,7 +705,7 @@ def update_settings():
         new_tpl = request.form.get('reply_template', 'default')
         user_sessions[usr]["reply_template"] = new_tpl
         try:
-            new_max = int(request.form.get('max_tickets', 5))
+            new_max = int(request.form.get('max_tickets', 10))
             if new_max > 0: user_sessions[usr]["max_tickets"] = new_max
         except ValueError:
             pass
