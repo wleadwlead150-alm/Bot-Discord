@@ -49,19 +49,19 @@ STEALTH_DEVICE_PROFILES = [
 
 user_sessions = {
     "Saif": {
-        "running": False, "speed": 0.03, "thread": None, "token": "",
+        "running": False, "speed": 1.5, "thread": None, "token": "",
         "message": "أهلاً بك عزيزي، معك Saif من فريق الإدارة العليا. تفضل كيف يمكنني خدمتك؟",
         "reply_template": "default",
         "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 10, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False, "last_sent_text": "", "last_sent_time": 0
     },
     "Marshall": {
-        "running": False, "speed": 0.05, "thread": None, "token": "",
+        "running": False, "speed": 1.5, "thread": None, "token": "",
         "message": "أهلاً بك، معك Marshall الإدارة العليا. كيف يمكنني مساعدتك؟",
         "reply_template": "default",
         "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 10, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False, "last_sent_text": "", "last_sent_time": 0
     },
     "Youssef": {
-        "running": False, "speed": 0.05, "thread": None, "token": "",
+        "running": False, "speed": 1.5, "thread": None, "token": "",
         "message": "أهلاً بك، معك Youssef الإدارة العليا. تفضل بطرح مشكلتك.",
         "reply_template": "default",
         "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 10, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False, "last_sent_text": "", "last_sent_time": 0
@@ -131,10 +131,9 @@ def background_token_watcher(username):
 def safe_post(token, url, payload, current_speed, username=None):
     try:
         headers = get_secure_headers(token)
-        jitter_delay = random.uniform(0.010, 0.035)
-        time.sleep(max(0.015, current_speed + jitter_delay))
+        time.sleep(current_speed)
         
-        res = requests.post(url, json=payload, headers=headers, timeout=4)
+        res = requests.post(url, json=payload, headers=headers, timeout=5)
         if res.status_code == 429:
             if username and username in user_sessions:
                 with state_lock:
@@ -145,7 +144,7 @@ def safe_post(token, url, payload, current_speed, username=None):
                         user_sessions[username]["logs"].append("🚨 [Elite Shield] تم تجميد الحساب مؤقتاً لتفادي الباند النهائي.")
                         security_audit_logs.insert(0, f"⚠️ حماية النخبة: تم إيقاف <b>{username}</b> احترازياً.")
             retry_after = res.json().get("retry_after", current_speed + 1.0)
-            time.sleep(retry_after + random.uniform(0.1, 0.4))
+            time.sleep(retry_after + 0.5)
             return safe_post(token, url, payload, current_speed, username)
         return res
     except Exception:
@@ -162,7 +161,7 @@ def verify_and_purge_if_late(token, ch_id, sent_msg_id, current_user_id, usernam
             trigger_violation = False
             violation_reason = ""
 
-            if time.time() - channel_creation_time < 0.15:
+            if time.time() - channel_creation_time < 0.2:
                 trigger_violation = True
                 violation_reason = "إرسال مبكر قبل اكتمال فتح التذكرة."
 
@@ -193,7 +192,7 @@ def verify_and_purge_if_late(token, ch_id, sent_msg_id, current_user_id, usernam
                 alert_payload = {
                     "content": f"🛡️ **تنبيه الحماية السريعة (Elite Shield)**:\n• المستخدم: `{username}`\n• التكت: `#{ticket_name}`\n• الإجراء: **تم سحب وحذف الرسالة بنجاح**\n• الرابط: {ticket_url}"
                 }
-                safe_post(token, f"{API}/{DEFAULT_ALERT_CHANNEL}/messages", alert_payload, 0.03, username)
+                safe_post(token, f"{API}/{DEFAULT_ALERT_CHANNEL}/messages", alert_payload, 0.5, username)
                 
                 with state_lock:
                     user_sessions[username]["logs"].append(f"🛡️ [Purge Guard] تم سحب رسالة #{ticket_name} لحماية السجل.")
@@ -262,7 +261,7 @@ def process_ticket(username, token, ch_id, name):
                 master_global_audit.pop()
             
             alert_payload = {"content": f"💎 **{username}** قام باستلام تكت جديد:\n• اسم التكت: `#{name}`\n• الرابط: {ticket_url}"}
-            safe_post(token, f"{API}/{DEFAULT_ALERT_CHANNEL}/messages", alert_payload, current_speed, username)
+            safe_post(token, f"{API}/{DEFAULT_ALERT_CHANNEL}/messages", alert_payload, 0.5, username)
 
             if session_data["count"] < session_data["max_tickets"]:
                 session_data["count"] += 1
@@ -355,7 +354,6 @@ PANEL_HTML = """
         .btn:hover { transform: translateY(-2px); filter: brightness(1.1); }
         .btn-start { background: linear-gradient(135deg, #10b981, #059669); color: white; box-shadow: 0 4px 20px rgba(16, 185, 129, 0.35); }
         .btn-stop { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; box-shadow: 0 4px 20px rgba(239, 68, 68, 0.35); }
-        .btn-turbo { background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: white; box-shadow: 0 4px 20px rgba(139, 92, 246, 0.35); }
         .btn-cooldown-on { background: linear-gradient(135deg, #2563eb, #1d4ed8); color: white; }
         .btn-cooldown-off { background: linear-gradient(135deg, #131b2e, #1e293b); color: #94a3b8; border: 1px solid #334155; }
         .btn-silent-on { background: linear-gradient(135deg, #d97706, #b45309); color: white; }
@@ -365,8 +363,6 @@ PANEL_HTML = """
         .btn-token { background: linear-gradient(135deg, #0ea5e9, #0284c7); color: white; }
         .btn-emergency { background: linear-gradient(135deg, #7f1d1d, #450a0a); color: #fecaca; border: 1px solid #ef4444; }
         .speed-row { display: flex; justify-content: space-between; gap: 8px; margin: 6px 0; }
-        .btn-speed-up, .btn-speed-down { flex: 1; padding: 9px; background: #0b111e; border: 1px solid #1e293b; color: #34d399; font-size: 12px; font-weight: 700; border-radius: 10px; cursor: pointer; font-family: 'Cairo', sans-serif; transition: 0.2s; }
-        .btn-speed-up:hover, .btn-speed-down:hover { background: #131b2e; }
         .config-section { text-align: right; margin-top: 12px; background: #0b111e; padding: 12px; border-radius: 14px; border: 1px solid #1e293b; }
         .config-title { color: #38bdf8; font-size: 11px; margin-bottom: 5px; font-weight: 700; }
         input[type="text"], input[type="password"], input[type="number"], textarea, select { width: 100%; padding: 9px; background: #05080d; border: 1px solid #1e293b; color: #f1f5f9; border-radius: 10px; box-sizing: border-box; font-size: 11px; text-align: center; outline: none; margin-bottom: 6px; font-family: 'Cairo', sans-serif; }
@@ -402,15 +398,6 @@ PANEL_HTML = """
             {% endif %}
         </form>
 
-        <form action="/turbo" method="post">
-            <button type="submit" class="btn btn-turbo">⚡ تفعيل السرعة القصوى (0.03ث)</button>
-        </form>
-
-        <div class="speed-row">
-            <form action="/speed/up" method="post" style="flex:1; display:inline;"><button type="submit" class="btn-speed-up">⚡ تسريع (-)</button></form>
-            <form action="/speed/down" method="post" style="flex:1; display:inline;"><button type="submit" class="btn-speed-down">⏳ إبطاء (+)</button></form>
-        </div>
-
         <form action="/toggle_cooldown" method="post">
             {% if cooldown_mode %}
                 <button type="submit" class="btn btn-cooldown-on">🛡️ نظام التخطي الذكي (مفعل)</button>
@@ -433,7 +420,7 @@ PANEL_HTML = """
                 <input type="number" name="max_tickets" value="{{ max_tickets }}" min="1" max="100">
                 
                 <div class="config-title">ضبط سرعة الاستجابة بالثواني:</div>
-                <input type="number" step="0.01" name="custom_speed" value="{{ speed }}" min="0.02" max="10.0" style="margin-bottom: 6px;">
+                <input type="number" step="0.1" name="custom_speed" value="{{ speed }}" min="0.5" max="10.0" style="margin-bottom: 6px;">
 
                 <div class="config-title">قالب الرد التلقائي:</div>
                 <select name="reply_template" style="margin-bottom: 6px;">
@@ -603,13 +590,6 @@ def toggle():
             data["running"] = False
     return redirect(url_for('panel'))
 
-@app.route('/turbo', methods=['POST'])
-def turbo():
-    if 'user' in session:
-        user_sessions[session['user']]["speed"] = 0.03
-        user_sessions[session['user']]["logs"].append("⚡ تم ضبط وضع السرعة القصوى (0.03ث).")
-    return redirect(url_for('panel'))
-
 @app.route('/toggle_cooldown', methods=['POST'])
 def toggle_cooldown():
     if 'user' in session:
@@ -657,7 +637,7 @@ def create_account():
         if new_u and new_p:
             USERS[new_u] = new_p
             user_sessions[new_u] = {
-                "running": False, "speed": 0.05, "thread": None, "token": new_t,
+                "running": False, "speed": 1.5, "thread": None, "token": new_t,
                 "message": f"أهلاً بك، معك {new_u} الإدارة العليا.",
                 "reply_template": "default", "logs": [], "count": 0, "total_lifetime": 0, 
                 "max_tickets": 10, "cooldown_mode": False, "skip_next": False, 
@@ -682,21 +662,6 @@ def manage_member_action():
                 user_sessions[target]["token"] = ""
     return redirect(url_for('panel'))
 
-@app.route('/speed/up', methods=['POST'])
-def speed_up():
-    if 'user' in session:
-        usr = session['user']
-        if user_sessions[usr]["speed"] > 0.02:
-            user_sessions[usr]["speed"] = round(max(0.02, user_sessions[usr]["speed"] - 0.01), 3)
-    return redirect(url_for('panel'))
-
-@app.route('/speed/down', methods=['POST'])
-def speed_down():
-    if 'user' in session:
-        usr = session['user']
-        user_sessions[usr]["speed"] = round(user_sessions[usr]["speed"] + 0.01, 3)
-    return redirect(url_for('panel'))
-
 @app.route('/update_settings', methods=['POST'])
 def update_settings():
     if 'user' in session:
@@ -710,8 +675,8 @@ def update_settings():
         except ValueError:
             pass
         try:
-            new_speed = float(request.form.get('custom_speed', 0.05))
-            if new_speed >= 0.02: user_sessions[usr]["speed"] = round(new_speed, 3)
+            new_speed = float(request.form.get('custom_speed', 1.5))
+            if new_speed >= 0.5: user_sessions[usr]["speed"] = round(new_speed, 1)
         except ValueError:
             pass
         if new_msg: user_sessions[usr]["message"] = new_msg
