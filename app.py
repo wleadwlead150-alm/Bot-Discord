@@ -150,55 +150,6 @@ def safe_post(token, url, payload, current_speed, username=None):
     except Exception:
         return None
 
-def verify_and_purge_if_late(token, ch_id, sent_msg_id, current_user_id, username, ticket_name, channel_creation_time):
-    headers = get_secure_headers(token)
-    time.sleep(0.5)
-    try:
-        res = requests.get(f"{API}/{ch_id}/messages?limit=6", headers=headers, timeout=4)
-        if res.status_code == 200:
-            messages = res.json()
-            my_msg_found = False
-            trigger_violation = False
-            violation_reason = ""
-
-            if time.time() - channel_creation_time < 0.2:
-                trigger_violation = True
-                violation_reason = "إرسال مبكر قبل اكتمال فتح التذكرة."
-
-            for m in messages:
-                m_id = m.get("id")
-                author = m.get("author", {})
-                author_id = author.get("id")
-                author_name = author.get("username", "").lower()
-                member_data = m.get("member", {})
-                nick = member_data.get("nick")
-                nick_lower = nick.lower() if nick else ""
-
-                if m_id == sent_msg_id:
-                    my_msg_found = True
-                elif not my_msg_found:
-                    if author_id != current_user_id:
-                        if author_name.startswith("moderator") or nick_lower.startswith("moderator") or "moderator" in author_name or "moderator" in nick_lower:
-                            trigger_violation = True
-                            violation_reason = f"تم رصد إداري مسبق (`{author.get('username')}`)."
-                        else:
-                            trigger_violation = True
-                            violation_reason = "شخص آخر سبقك بالرد."
-
-            if trigger_violation:
-                requests.delete(f"{API}/{ch_id}/messages/{sent_msg_id}", headers=headers, timeout=3)
-                
-                ticket_url = f"https://discord.com/channels/{SERVER_ID}/{ch_id}"
-                alert_payload = {
-                    "content": f"🛡️ **تنبيه الحماية السريعة (Elite Shield)**:\n• المستخدم: `{username}`\n• التكت: `#{ticket_name}`\n• الإجراء: **تم سحب وحذف الرسالة بنجاح**\n• الرابط: {ticket_url}"
-                }
-                safe_post(token, f"{API}/{DEFAULT_ALERT_CHANNEL}/messages", alert_payload, 0.5, username)
-                
-                with state_lock:
-                    user_sessions[username]["logs"].append(f"🛡️ [Purge Guard] تم سحب رسالة #{ticket_name} لحماية السجل.")
-    except Exception:
-        pass
-
 def process_ticket(username, token, ch_id, name):
     with state_lock:
         session_data = user_sessions[username]
@@ -235,22 +186,10 @@ def process_ticket(username, token, ch_id, name):
     session_data["last_sent_text"] = custom_msg
     session_data["last_sent_time"] = now_ts
 
-    channel_creation_time = ((int(ch_id) >> 22) + 1420070400000) / 1000.0
-
     res = safe_post(token, f"{API}/{ch_id}/messages", {"content": custom_msg}, current_speed, username)
     
     with state_lock:
         if res and res.status_code in [200, 201]:
-            res_data = res.json()
-            sent_msg_id = res_data.get("id")
-            
-            headers_me = get_secure_headers(token)
-            me_res = requests.get("https://discord.com/api/v9/users/@me", headers=headers_me, timeout=3)
-            current_user_id = me_res.json().get("id") if me_res.status_code == 200 else None
-
-            if current_user_id and sent_msg_id:
-                threading.Thread(target=verify_and_purge_if_late, args=(token, ch_id, sent_msg_id, current_user_id, username, name, channel_creation_time), daemon=True).start()
-
             ticket_url = f"https://discord.com/channels/{SERVER_ID}/{ch_id}"
             log_text = f"✨ تم استلام تكت بنجاح **#{name}** | <a href='{ticket_url}' target='_blank'>رابط التكت</a>"
             
@@ -362,7 +301,6 @@ PANEL_HTML = """
         .btn-clear { background: linear-gradient(135deg, #1e293b, #0f172a); color: #f87171; border: 1px solid #334155; }
         .btn-token { background: linear-gradient(135deg, #0ea5e9, #0284c7); color: white; }
         .btn-emergency { background: linear-gradient(135deg, #7f1d1d, #450a0a); color: #fecaca; border: 1px solid #ef4444; }
-        .speed-row { display: flex; justify-content: space-between; gap: 8px; margin: 6px 0; }
         .config-section { text-align: right; margin-top: 12px; background: #0b111e; padding: 12px; border-radius: 14px; border: 1px solid #1e293b; }
         .config-title { color: #38bdf8; font-size: 11px; margin-bottom: 5px; font-weight: 700; }
         input[type="text"], input[type="password"], input[type="number"], textarea, select { width: 100%; padding: 9px; background: #05080d; border: 1px solid #1e293b; color: #f1f5f9; border-radius: 10px; box-sizing: border-box; font-size: 11px; text-align: center; outline: none; margin-bottom: 6px; font-family: 'Cairo', sans-serif; }
