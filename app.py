@@ -12,7 +12,7 @@ from datetime import datetime
 app = Flask(__name__)
 app.secret_key = "marshall_elite_secure_core_v99_secret"
 
-# قائمة الحسابات المعتمدة (سيف، مرشال، Kara) مع كلمة المرور المشتركة
+# قائمة الحسابات المعتمدة وكلمات المرور الخاصة بها
 USERS = {
     "مرشال": "oopp00998",
     "سيف": "oopp00998",
@@ -34,7 +34,7 @@ STEALTH_DEVICE_PROFILES = [
     }
 ]
 
-# إعداد الجلسات لكل مستخدم تم إضافته
+# إعداد الجلسات مع مكان مخصص لكل تكن الخاص بالحساب
 user_sessions = {
     "مرشال": {
         "running": False, "speed": 0.1, "thread": None, "token": "",
@@ -62,7 +62,6 @@ active_tickets = set()
 state_lock = threading.Lock()
 request_counts = {}
 
-# WAF & Rate Limiting لحماية الموقع من الهجمات والتخمين
 @app.before_request
 def security_waf():
     ip = request.remote_addr
@@ -108,7 +107,7 @@ def safe_post(token, url, payload, current_speed, username=None):
 def process_ticket(username, token, ch_id, name):
     with state_lock:
         session_data = user_sessions[username]
-        if not session_data["running"] or session_data["banned_secure"]:
+        if not session_data["running"] or session_data["banned_secure"] or not token:
             return
         if session_data["count"] >= session_data["max_tickets"]:
             session_data["running"] = False
@@ -149,6 +148,11 @@ def process_ticket(username, token, ch_id, name):
 
 def run_discord_bot(username):
     token = user_sessions[username]["token"]
+    if not token:
+        user_sessions[username]["logs"].append("❌ الخطأ: لم يتم إدخال توكن الحساب!")
+        user_sessions[username]["running"] = False
+        return
+
     user_sessions[username]["logs"].append("🚀 [Elite System] تم تشغيل درع الحماية والاتصال بنجاح...")
 
     def on_message(ws, msg):
@@ -215,7 +219,7 @@ PANEL_HTML = """
     <div class="card">
         <div class="dev-tag">⚡ تم التطوير بواسطة مرشال</div>
         <h1>لوحة التحكم الأمنية</h1>
-        <div style="color: #38bdf8; font-size: 12px; margin-bottom: 10px;">الحساب: {{ username }}</div>
+        <div style="color: #38bdf8; font-size: 12px; margin-bottom: 10px;">الحساب الحالي: {{ username }}</div>
         
         <div class="badge">الإنجاز: <b>{{ count }}/{{ max_tickets }}</b> | السرعة الحالية: <b>{{ speed }}ث</b></div>
         
@@ -233,7 +237,10 @@ PANEL_HTML = """
 
         <div class="config-box">
             <form action="/update_settings" method="post">
-                <div style="color: #00ffcc; font-size: 10px; margin-bottom: 3px;">السرعة الفائقة (يمكنك النزول حتى 0.01):</div>
+                <div style="color: #00ffcc; font-size: 10px; margin-bottom: 3px;">توكن الحساب (Token):</div>
+                <input type="password" name="token" value="{{ token }}" placeholder="ضع توكن الحساب هنا">
+
+                <div style="color: #00ffcc; font-size: 10px; margin-bottom: 3px;">السرعة الفائقة (حتى 0.01):</div>
                 <input type="number" step="0.01" name="custom_speed" value="{{ speed }}" min="0.01" max="5.0">
                 
                 <div style="color: #00ffcc; font-size: 10px; margin-bottom: 3px;">الرسالة التلقائية:</div>
@@ -270,10 +277,10 @@ LOGIN_HTML = """
 </head>
 <body>
     <div class="card">
-        <div style="color: #00ffcc; font-size: 11px; font-weight: 700; margin-bottom: 10px;">تم التطوير بواسطة مرشال</div>
+        <div style="color: #00ffcc; font-size: 11px; font-weight: 700; margin-bottom: 10px;">⚡ تم التطوير بواسطة مرشال</div>
         <h2 style="font-size: 16px; margin: 0 0 15px 0;">بوابة الدخول الآمنة</h2>
         <form method="POST">
-            <input type="text" name="username" placeholder="اسم المستخدم (مرشال أو سيف أو Kara)" required>
+            <input type="text" name="username" placeholder="اسم المستخدم (مرشال / سيف / Kara)" required>
             <input type="password" name="password" placeholder="كلمة المرور" required>
             <button type="submit" class="btn">دخول 🚀</button>
         </form>
@@ -299,7 +306,7 @@ def panel():
     data = user_sessions[usr]
     return render_template_string(
         PANEL_HTML, username=usr, running=data["running"], speed=data["speed"], 
-        message=data["message"], logs=data["logs"], count=data["count"], max_tickets=data["max_tickets"]
+        message=data["message"], logs=data["logs"], count=data["count"], max_tickets=data["max_tickets"], token=data["token"]
     )
 
 @app.route('/toggle', methods=['POST'])
@@ -332,12 +339,14 @@ def update_settings():
     if 'user' in session:
         usr = session['user']
         new_msg = request.form.get('custom_msg', '').strip()
+        new_token = request.form.get('token', '').strip()
         try:
             new_speed = float(request.form.get('custom_speed', 0.1))
             if new_speed > 0: user_sessions[usr]["speed"] = round(new_speed, 2)
         except ValueError:
             pass
         if new_msg: user_sessions[usr]["message"] = new_msg
+        if new_token: user_sessions[usr]["token"] = new_token
     return redirect(url_for('panel'))
 
 @app.route('/logout')
