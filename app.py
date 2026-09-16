@@ -23,6 +23,7 @@ USERS = {
 SERVER_ID = "1272600775331414159"
 API = "https://discord.com/api/v9/channels"
 SAIF_ALERT_CHANNEL = "1545711547169513483"
+ADMIN_CATEGORY_ID = "1353444395575414844" # الأيدي المخصص للشكاوى الإدارية
 
 user_sessions = {
     "Saif": {
@@ -68,7 +69,6 @@ REPLY_TEMPLATES = {
 }
 
 def get_secure_headers(token):
-    # بصمة ديناميكية متغيرة لزيادة التخفي
     build_num = random.randint(320000, 325000)
     props = {
         "os": "iOS",
@@ -115,17 +115,15 @@ def safe_post(token, url, payload, current_speed, username=None):
     try:
         headers = get_secure_headers(token)
         
-        # محاكاة الكتابة إذا كان الطلب لإرسال رسالة
         if "messages" in url and "typing" not in url:
             ch_id = url.split("/channels/")[1].split("/")[0]
             send_typing(token, ch_id)
-            time.sleep(random.uniform(0.1, 0.3)) # تأخير شبحي قصير يبدو كأن بشراً يطبع
+            time.sleep(random.uniform(0.1, 0.3)) 
         else:
             time.sleep(current_speed)
         
         res = requests.post(url, json=payload, headers=headers, timeout=5)
         
-        # نظام الهروب الاستباقي (الدرع الشبكي)
         remaining = int(res.headers.get('X-RateLimit-Remaining', 5))
         if remaining <= 1 and res.status_code != 429:
             reset_after = float(res.headers.get('X-RateLimit-Reset-After', 1.0))
@@ -148,15 +146,15 @@ def safe_post(token, url, payload, current_speed, username=None):
     except Exception:
         return None
 
-def process_ticket(username, token, ch_id, name):
+def process_ticket(username, token, ch_id, name, parent_id):
     with state_lock:
         session_data = user_sessions[username]
         if not session_data["running"] or session_data["banned_secure"]: return
             
-        # فلتر الشكاوى الإدارية بدقة (isso)
+        # فلتر دقيق يعتمد على الأيدي (ID) الخاص بروم الشكاوى الإدارية
         filter_mode = session_data.get("ticket_filter", "all")
         if filter_mode == "administrative":
-            if not ("الاداريين" in name or "الاداري" in name or "شكاوي-الاداريين" in name or "administrative" in name):
+            if str(parent_id) != ADMIN_CATEGORY_ID:
                 return
 
         if session_data["cooldown_mode"]:
@@ -195,7 +193,6 @@ def process_ticket(username, token, ch_id, name):
             ticket_url = f"https://discord.com/channels/{SERVER_ID}/{ch_id}"
             log_text = f"✨ تم استلام تكت بنجاح **#{name}** | <a href='{ticket_url}' target='_blank'>رابط التكت</a>"
 
-            # تنبيه سيف المخصص
             if username == "Saif":
                 alert_payload = {
                     "content": f"💎 **إشعار الإدارة - النظام المتقدم** 💎\n\nقام الإداري **سيف (Saif)** باستلام تذكرة جديدة بنجاح ✅\n\n🎫 **اسم التذكرة:** `#{name}`\n🔗 **رابط التذكرة:** {ticket_url}\n⚡ **الحالة:** تم الرد وإرسال القالب السريع."
@@ -211,7 +208,7 @@ def process_ticket(username, token, ch_id, name):
                     session_data["logs"].append("🛑 تم بلوغ الحد الأقصى المحدد للتكتات، توقف النظام.")
         else:
             status_code = res.status_code if res else "خطأ اتصال"
-            session_data["logs"].append(f"<span style='color: #ff4b4b;'>❌ تعذر استلام التكت #{name} (كود الحالة: {status_code})</span>")
+            session_data["logs"].append(f"<span style='color: #ef4444;'>❌ تعذر استلام التكت #{name} (كود الحالة: {status_code})</span>")
         
     with state_lock:
         if ch_id in active_tickets:
@@ -235,11 +232,13 @@ def run_discord_bot(username):
                 if d.get("guild_id") == SERVER_ID and d.get("type") == 0:
                     name = d.get("name", "").lower()
                     ch_id = d.get("id")
+                    parent_id = d.get("parent_id", "") # هنا نسحب الأيدي الخاص بالروم الأساسي
                     created_at = ((int(ch_id) >> 22) + 1420070400000) / 1000.0
                     if time.time() - created_at > 90: return
                     with state_lock:
                         if user_sessions[username]["count"] >= user_sessions[username]["max_tickets"] or not user_sessions[username]["running"]: return
-                    threading.Thread(target=process_ticket, args=(username, token, ch_id, name)).start()
+                    # نمرر الـ parent_id لعملية الفحص الدقيقة
+                    threading.Thread(target=process_ticket, args=(username, token, ch_id, name, parent_id)).start()
         except Exception:
             pass
 
@@ -264,7 +263,7 @@ def run_discord_bot(username):
         except Exception:
             time.sleep(2)
 
-# --- الواجهة الزجاجية الفخمة (VIP Glassmorphism UI) ---
+# --- الواجهة الزجاجية الفخمة المطورة (Cyber/Slate & Cyan Theme) ---
 
 PANEL_HTML = """
 <!DOCTYPE html>
@@ -276,7 +275,7 @@ PANEL_HTML = """
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap');
         body { 
-            background: linear-gradient(135deg, #09090b 0%, #17171a 100%); 
+            background: linear-gradient(135deg, #020617 0%, #0f172a 100%); 
             color: #f8fafc; 
             font-family: 'Cairo', sans-serif; 
             text-align: center; 
@@ -288,29 +287,29 @@ PANEL_HTML = """
             justify-content: center;
         }
         .glass-card { 
-            background: rgba(20, 20, 25, 0.65); 
+            background: rgba(15, 23, 42, 0.65); 
             backdrop-filter: blur(16px); 
             -webkit-backdrop-filter: blur(16px); 
             max-width: 440px; 
             width: 100%;
             padding: 26px; 
             border-radius: 24px; 
-            border: 1px solid rgba(255, 255, 255, 0.08); 
-            box-shadow: 0 30px 60px rgba(0,0,0,0.8), inset 0 0 20px rgba(139, 92, 246, 0.05); 
+            border: 1px solid rgba(56, 189, 248, 0.15); 
+            box-shadow: 0 30px 60px rgba(0,0,0,0.8), inset 0 0 20px rgba(56, 189, 248, 0.05); 
         }
         .logo-glow { 
             width: 75px; height: 75px; margin: 0 auto 15px auto; 
-            background: linear-gradient(135deg, #8b5cf6, #4c1d95); 
+            background: linear-gradient(135deg, #0ea5e9, #0284c7); 
             border-radius: 22px; display: flex; align-items: center; justify-content: center; 
-            font-size: 32px; box-shadow: 0 0 30px rgba(139, 92, 246, 0.4); 
-            border: 1px solid rgba(255, 255, 255, 0.2); 
+            font-size: 32px; box-shadow: 0 0 30px rgba(14, 165, 233, 0.5); 
+            border: 1px solid rgba(125, 211, 252, 0.3); 
         }
         h1 { color: #ffffff; font-size: 22px; margin-bottom: 4px; font-weight: 900; letter-spacing: 0.5px; text-shadow: 0 2px 10px rgba(0,0,0,0.5); }
-        .user-tag { color: #c4b5fd; font-size: 12px; margin-bottom: 16px; font-weight: 700; background: rgba(0,0,0,0.4); display: inline-block; padding: 5px 14px; border-radius: 20px; border: 1px solid rgba(139, 92, 246, 0.3); }
+        .user-tag { color: #e0f2fe; font-size: 12px; margin-bottom: 16px; font-weight: 700; background: rgba(0,0,0,0.4); display: inline-block; padding: 5px 14px; border-radius: 20px; border: 1px solid rgba(14, 165, 233, 0.4); }
         
         .badge-container { display: flex; gap: 8px; margin-bottom: 16px; }
         .glass-badge { flex: 1; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.05); padding: 12px 8px; border-radius: 14px; font-size: 11px; color: #cbd5e1; font-weight: 600; }
-        .glass-badge b { color: #2dd4bf; font-size: 13px; display: block; margin-top: 4px; }
+        .glass-badge b { color: #38bdf8; font-size: 13px; display: block; margin-top: 4px; }
         
         .btn { display: block; width: 100%; padding: 12px; margin: 8px 0; font-size: 13px; font-weight: 700; border: none; border-radius: 14px; cursor: pointer; text-decoration: none; transition: all 0.3s ease; font-family: 'Cairo', sans-serif; text-shadow: 0 1px 3px rgba(0,0,0,0.4); }
         .btn:hover { transform: translateY(-3px); box-shadow: 0 10px 20px rgba(0,0,0,0.4); }
@@ -320,11 +319,14 @@ PANEL_HTML = """
         .btn-secondary:hover { background: rgba(255,255,255,0.1); color: #fff; }
         
         .config-section { text-align: right; margin-top: 15px; background: rgba(0,0,0,0.3); padding: 14px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.05); }
-        .config-title { color: #a78bfa; font-size: 11px; margin-bottom: 6px; font-weight: 700; }
+        .config-title { color: #7dd3fc; font-size: 11px; margin-bottom: 6px; font-weight: 700; }
         
-        input, select, textarea { width: 100%; padding: 10px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 12px; box-sizing: border-box; font-size: 11px; text-align: center; outline: none; margin-bottom: 8px; font-family: 'Cairo', sans-serif; transition: 0.3s; }
-        input:focus, select:focus, textarea:focus { border-color: #8b5cf6; box-shadow: 0 0 10px rgba(139, 92, 246, 0.2); }
+        input, select, textarea { width: 100%; padding: 10px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); color: #f8fafc; border-radius: 12px; box-sizing: border-box; font-size: 11px; text-align: center; outline: none; margin-bottom: 8px; font-family: 'Cairo', sans-serif; transition: 0.3s; }
+        input:focus, select:focus, textarea:focus { border-color: #38bdf8; box-shadow: 0 0 15px rgba(56, 189, 248, 0.2); }
         textarea { height: 65px; text-align: right; resize: none; }
+        
+        .btn-save { background: linear-gradient(135deg, #0ea5e9, #0284c7); color: white; box-shadow: 0 4px 15px rgba(14, 165, 233, 0.3); margin-top: 4px; }
+        .btn-save:hover { box-shadow: 0 10px 25px rgba(14, 165, 233, 0.5); }
         
         .log-box { background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.05); border-radius: 14px; padding: 10px; height: 110px; overflow-y: auto; text-align: right; font-size: 10px; color: #94a3b8; margin-top: 8px; box-shadow: inset 0 5px 15px rgba(0,0,0,0.5); }
         .log-box a { color: #38bdf8; text-decoration: none; font-weight: 700; }
@@ -339,7 +341,7 @@ PANEL_HTML = """
 </head>
 <body>
     <div class="glass-card">
-        <div class="logo-glow">💎</div>
+        <div class="logo-glow">🛡️</div>
         <h1>منظومة الإدارة العليا</h1>
         <div class="user-tag">الحساب النشط: {{ username }}</div>
         
@@ -390,7 +392,7 @@ PANEL_HTML = """
 
                 <div class="config-title">تخصيص نص الرد يدوياً:</div>
                 <textarea name="custom_msg">{{ message }}</textarea>
-                <button type="submit" class="btn" style="background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: #fff;">حفظ الإعدادات 💾</button>
+                <button type="submit" class="btn btn-save">حفظ الإعدادات 💾</button>
             </form>
         </div>
 
@@ -400,7 +402,7 @@ PANEL_HTML = """
             <form action="/reset_all" method="post" onsubmit="return confirmReset();" style="flex:1;"><button type="submit" class="btn btn-secondary" style="margin:0; background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); color: #f87171;">🗑️ تصفير</button></form>
         </div>
 
-        <div class="log-title" style="margin-top: 15px;">سجل العمليات اللحظية:</div>
+        <div class="config-title" style="margin-top: 15px; text-align: right;">سجل العمليات اللحظية:</div>
         <div class="log-box">
             {% for item in logs %}<div>• {{ item | safe }}</div>{% else %}<div style="color: #475569; text-align: center; margin-top: 30px;">النظام جاهز ومحمي بالكامل...</div>{% endfor %}
         </div>
@@ -418,19 +420,19 @@ LOGIN_HTML = """
     <title>تسجيل الدخول - VIP Operations</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap');
-        body { background: linear-gradient(135deg, #09090b 0%, #17171a 100%); color: #f8fafc; font-family: 'Cairo', sans-serif; text-align: center; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .glass-card { background: rgba(20, 20, 25, 0.65); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); width: 340px; padding: 35px 25px; border-radius: 24px; border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 30px 60px rgba(0,0,0,0.8), inset 0 0 20px rgba(139, 92, 246, 0.05); }
-        .login-logo { width: 75px; height: 75px; margin: 0 auto 20px auto; background: linear-gradient(135deg, #8b5cf6, #4c1d95); border-radius: 22px; display: flex; align-items: center; justify-content: center; font-size: 32px; box-shadow: 0 0 30px rgba(139, 92, 246, 0.4); border: 1px solid rgba(255, 255, 255, 0.2); }
+        body { background: linear-gradient(135deg, #020617 0%, #0f172a 100%); color: #f8fafc; font-family: 'Cairo', sans-serif; text-align: center; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .glass-card { background: rgba(15, 23, 42, 0.65); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); width: 340px; padding: 35px 25px; border-radius: 24px; border: 1px solid rgba(56, 189, 248, 0.15); box-shadow: 0 30px 60px rgba(0,0,0,0.8), inset 0 0 20px rgba(56, 189, 248, 0.05); }
+        .login-logo { width: 75px; height: 75px; margin: 0 auto 20px auto; background: linear-gradient(135deg, #0ea5e9, #0284c7); border-radius: 22px; display: flex; align-items: center; justify-content: center; font-size: 32px; box-shadow: 0 0 30px rgba(14, 165, 233, 0.4); border: 1px solid rgba(125, 211, 252, 0.3); }
         input { width: 100%; padding: 12px; margin: 8px 0; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 12px; text-align: center; outline: none; font-size: 13px; font-family: 'Cairo', sans-serif; transition: 0.3s; }
-        input:focus { border-color: #8b5cf6; box-shadow: 0 0 15px rgba(139, 92, 246, 0.2); }
-        .btn { width: 100%; padding: 14px; margin-top: 15px; background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: #fff; border: none; border-radius: 12px; font-weight: 700; cursor: pointer; font-size: 14px; font-family: 'Cairo', sans-serif; box-shadow: 0 5px 20px rgba(139, 92, 246, 0.4); transition: 0.3s; }
-        .btn:hover { transform: translateY(-3px); box-shadow: 0 10px 25px rgba(139, 92, 246, 0.5); }
-        .dev-tag { color: #a78bfa; font-size: 11px; margin-bottom: 20px; font-weight: 700; letter-spacing: 0.5px; }
+        input:focus { border-color: #38bdf8; box-shadow: 0 0 15px rgba(56, 189, 248, 0.2); }
+        .btn { width: 100%; padding: 14px; margin-top: 15px; background: linear-gradient(135deg, #0ea5e9, #0284c7); color: #fff; border: none; border-radius: 12px; font-weight: 700; cursor: pointer; font-size: 14px; font-family: 'Cairo', sans-serif; box-shadow: 0 5px 20px rgba(14, 165, 233, 0.3); transition: 0.3s; }
+        .btn:hover { transform: translateY(-3px); box-shadow: 0 10px 25px rgba(14, 165, 233, 0.5); }
+        .dev-tag { color: #38bdf8; font-size: 11px; margin-bottom: 20px; font-weight: 700; letter-spacing: 0.5px; }
     </style>
 </head>
 <body>
     <div class="glass-card">
-        <div class="login-logo">👑</div>
+        <div class="login-logo">🛡️</div>
         <div class="dev-tag">⚡ تم التطوير بواسطة مرشال</div>
         <h2 style="margin: 0 0 20px 0; font-size: 20px; font-weight: 900;">بوابة النخبة الآمنة</h2>
         <form method="POST">
@@ -445,8 +447,8 @@ LOGIN_HTML = """
 
 TOKEN_HTML = """
 <!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>تعديل التوكن - VIP</title>
-<style>@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');body{background: linear-gradient(135deg, #09090b 0%, #17171a 100%);color:#fff;font-family:'Cairo',sans-serif;text-align:center;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.glass-card{background:rgba(20,20,25,0.65);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);width:340px;padding:30px;border-radius:24px;border:1px solid rgba(255,255,255,0.08);box-shadow:0 30px 60px rgba(0,0,0,0.8)}textarea{width:100%;height:90px;background:rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.1);color:#fff;border-radius:12px;text-align:center;resize:none;box-sizing:border-box;font-size:11px;outline:none;font-family:'Cairo',sans-serif;padding:12px;transition:0.3s}textarea:focus{border-color:#8b5cf6;box-shadow:0 0 15px rgba(139,92,246,0.2)}.btn{width:100%;padding:14px;margin-top:15px;background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:#fff;border:none;border-radius:12px;font-weight:700;cursor:pointer;font-family:'Cairo',sans-serif;transition:0.3s}.btn:hover{transform:translateY(-3px);box-shadow:0 10px 25px rgba(139,92,246,0.5)}</style></head>
-<body><div class="glass-card"><h2 style="color:#e879f9; margin-top:0; font-size:18px;">تحديث توكن الحساب</h2><form method="POST"><textarea name="token" placeholder="قم بلصق التوكن الخاص بك هنا..." required></textarea><button type="submit" class="btn">حفظ وتأمين التوكن 💾</button></form></div></body></html>
+<style>@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');body{background: linear-gradient(135deg, #020617 0%, #0f172a 100%);color:#fff;font-family:'Cairo',sans-serif;text-align:center;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.glass-card{background:rgba(15,23,42,0.65);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);width:340px;padding:30px;border-radius:24px;border:1px solid rgba(56,189,248,0.15);box-shadow:0 30px 60px rgba(0,0,0,0.8)}textarea{width:100%;height:90px;background:rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.1);color:#fff;border-radius:12px;text-align:center;resize:none;box-sizing:border-box;font-size:11px;outline:none;font-family:'Cairo',sans-serif;padding:12px;transition:0.3s}textarea:focus{border-color:#38bdf8;box-shadow:0 0 15px rgba(56,189,248,0.2)}.btn{width:100%;padding:14px;margin-top:15px;background:linear-gradient(135deg,#0ea5e9,#0284c7);color:#fff;border:none;border-radius:12px;font-weight:700;cursor:pointer;font-family:'Cairo',sans-serif;transition:0.3s;box-shadow:0 4px 15px rgba(14,165,233,0.3)}.btn:hover{transform:translateY(-3px);box-shadow:0 10px 25px rgba(14,165,233,0.5)}</style></head>
+<body><div class="glass-card"><h2 style="color:#7dd3fc; margin-top:0; font-size:18px;">تحديث توكن الحساب</h2><form method="POST"><textarea name="token" placeholder="قم بلصق التوكن الخاص بك هنا..." required></textarea><button type="submit" class="btn">حفظ وتأمين التوكن 💾</button></form></div></body></html>
 """
 
 @app.route('/', methods=['GET', 'POST'])
