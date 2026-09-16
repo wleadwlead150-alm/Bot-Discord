@@ -6,6 +6,7 @@ import websocket
 import threading
 import random
 import os
+import base64
 from flask import Flask, render_template_string, request, redirect, url_for, session
 
 app = Flask(__name__)
@@ -25,31 +26,31 @@ SAIF_ALERT_CHANNEL = "1545711547169513483"
 
 user_sessions = {
     "Saif": {
-        "running": False, "speed": 1.5, "thread": None, "token": "", "proxy": "",
+        "running": False, "speed": 1.5, "thread": None, "token": "",
         "message": "أهلاً بك عزيزي، معك Saif من فريق الإدارة العليا. تفضل كيف يمكنني خدمتك؟",
         "reply_template": "default", "ticket_filter": "all",
         "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 10, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False, "last_sent_text": "", "last_sent_time": 0
     },
     "Marshall": {
-        "running": False, "speed": 1.5, "thread": None, "token": "", "proxy": "",
+        "running": False, "speed": 1.5, "thread": None, "token": "",
         "message": "أهلاً بك، معك Marshall الإدارة العليا. كيف يمكنني مساعدتك؟",
         "reply_template": "default", "ticket_filter": "all",
         "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 10, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False, "last_sent_text": "", "last_sent_time": 0
     },
     "Youssef": {
-        "running": False, "speed": 1.5, "thread": None, "token": "", "proxy": "",
+        "running": False, "speed": 1.5, "thread": None, "token": "",
         "message": "أهلاً بك، معك Youssef الإدارة العليا. تفضل بطرح مشكلتك.",
         "reply_template": "default", "ticket_filter": "all",
         "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 10, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False, "last_sent_text": "", "last_sent_time": 0
     },
     "Kara": {
-        "running": False, "speed": 1.5, "thread": None, "token": "", "proxy": "",
+        "running": False, "speed": 1.5, "thread": None, "token": "",
         "message": "أهلاً بك، معك Kara الإدارة العليا. تفضل كيف يمكنني خدمتك؟",
         "reply_template": "default", "ticket_filter": "all",
         "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 10, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False, "last_sent_text": "", "last_sent_time": 0
     },
     "isso": {
-        "running": False, "speed": 1.5, "thread": None, "token": "", "proxy": "",
+        "running": False, "speed": 1.5, "thread": None, "token": "",
         "message": "أهلاً بك، معك isso. تم استلام شكواك الإدارية وجاري معالجتها من قبل المختصين.",
         "reply_template": "default", "ticket_filter": "administrative",
         "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 10, "cooldown_mode": False, "skip_next": False, "silent_mode": False, "rate_limit_errors": 0, "banned_secure": False, "last_sent_text": "", "last_sent_time": 0
@@ -66,24 +67,23 @@ REPLY_TEMPLATES = {
     "ban_evidence": "نرجو الانتظار قليلاً ريثما يتم جلب تفاصيل التوثيق والأدلة الخاصة بالخادم."
 }
 
-STEALTH_DEVICE_PROFILES = [
-    {
-        "User-Agent": "Discord/188215 CFNetwork/1498.700.2 Darwin/23.4.0",
-        "X-Super-Properties": "eyJvcyI6ImlPUyIsImJyb3dzZXIiOiJEaXNjb3JkIENsaWVudCIsImRldmljZSI6ImlQaG9uZSAxMywgcHJvLCBtYXgiLCJzeXN0ZW1fdmVyc2lvbiI6IjE3LjUif="
-    },
-    {
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Discord/241.0",
-        "X-Super-Properties": "eyJvcyI6ImlPUyIsImJyb3dzZXIiOiJkaXNjb3JkIiwiZGV2aWNlIjoiaVBob25lIDEzIiwic3lzdGVtX3ZlcnNpb24iOiIxNy40LjEif="
-    }
-]
-
 def get_secure_headers(token):
-    profile = random.choice(STEALTH_DEVICE_PROFILES)
+    # بصمة ديناميكية متغيرة لزيادة التخفي
+    build_num = random.randint(320000, 325000)
+    props = {
+        "os": "iOS",
+        "browser": "Discord Client",
+        "device": "iPhone 13, pro, max",
+        "system_version": "17.5",
+        "client_build_number": build_num,
+        "client_version": "241.0"
+    }
+    b64_props = base64.b64encode(json.dumps(props).encode()).decode()
     return {
         "Authorization": token.strip(),
         "Content-Type": "application/json",
-        "User-Agent": profile["User-Agent"],
-        "X-Super-Properties": profile["X-Super-Properties"],
+        "User-Agent": "Discord/241.0 CFNetwork/1498.700.2 Darwin/23.4.0",
+        "X-Super-Properties": b64_props,
         "X-Discord-Locale": "ar",
         "Accept-Language": "ar,en-US;q=0.9,en;q=0.8"
     }
@@ -105,30 +105,34 @@ def check_token_health(token):
     except Exception as e:
         return f"❌ خطأ في الاتصال بالشبكة فحص التوكن: {str(e)}"
 
-def background_token_watcher(username):
-    while user_sessions[username]["running"] and not user_sessions[username]["banned_secure"]:
-        time.sleep(1800)
-        if not user_sessions[username]["running"]: break
-        token = user_sessions[username]["token"]
-        if token:
-            try:
-                headers = get_secure_headers(token)
-                res = requests.get("https://discord.com/api/v9/users/@me", headers=headers, timeout=5)
-                if res.status_code == 401:
-                    with state_lock:
-                        user_sessions[username]["running"] = False
-                        user_sessions[username]["banned_secure"] = True
-                        user_sessions[username]["logs"].append("🚨 [Watchdog] تم رصد انتهاء صلاحية التوكن، إيقاف الحساب حفاظاً عليه.")
-                    break
-            except Exception:
-                pass
+def send_typing(token, ch_id):
+    try:
+        requests.post(f"{API}/{ch_id}/typing", headers=get_secure_headers(token), timeout=2)
+    except:
+        pass
 
 def safe_post(token, url, payload, current_speed, username=None):
     try:
         headers = get_secure_headers(token)
-        time.sleep(current_speed)
+        
+        # محاكاة الكتابة إذا كان الطلب لإرسال رسالة
+        if "messages" in url and "typing" not in url:
+            ch_id = url.split("/channels/")[1].split("/")[0]
+            send_typing(token, ch_id)
+            time.sleep(random.uniform(0.1, 0.3)) # تأخير شبحي قصير يبدو كأن بشراً يطبع
+        else:
+            time.sleep(current_speed)
         
         res = requests.post(url, json=payload, headers=headers, timeout=5)
+        
+        # نظام الهروب الاستباقي (الدرع الشبكي)
+        remaining = int(res.headers.get('X-RateLimit-Remaining', 5))
+        if remaining <= 1 and res.status_code != 429:
+            reset_after = float(res.headers.get('X-RateLimit-Reset-After', 1.0))
+            if username and username in user_sessions:
+                user_sessions[username]["logs"].append(f"🛡️ [الدرع الذكي] توقف استباقي لـ {reset_after}ث لتجنب الكتم.")
+            time.sleep(reset_after + 0.1)
+            
         if res.status_code == 429:
             if username and username in user_sessions:
                 with state_lock:
@@ -149,9 +153,10 @@ def process_ticket(username, token, ch_id, name):
         session_data = user_sessions[username]
         if not session_data["running"] or session_data["banned_secure"]: return
             
+        # فلتر الشكاوى الإدارية بدقة (isso)
         filter_mode = session_data.get("ticket_filter", "all")
         if filter_mode == "administrative":
-            if not ("اداري" in name or "administrative" in name or "admin" in name or "شكوى-اداري" in name or "شكاوي-إدارية" in name):
+            if not ("الاداريين" in name or "الاداري" in name or "شكاوي-الاداريين" in name or "administrative" in name):
                 return
 
         if session_data["cooldown_mode"]:
@@ -190,14 +195,12 @@ def process_ticket(username, token, ch_id, name):
             ticket_url = f"https://discord.com/channels/{SERVER_ID}/{ch_id}"
             log_text = f"✨ تم استلام تكت بنجاح **#{name}** | <a href='{ticket_url}' target='_blank'>رابط التكت</a>"
 
-            # ----------------- التنبيه المخصص والمنسق لـ سيف -----------------
+            # تنبيه سيف المخصص
             if username == "Saif":
                 alert_payload = {
                     "content": f"💎 **إشعار الإدارة - النظام المتقدم** 💎\n\nقام الإداري **سيف (Saif)** باستلام تذكرة جديدة بنجاح ✅\n\n🎫 **اسم التذكرة:** `#{name}`\n🔗 **رابط التذكرة:** {ticket_url}\n⚡ **الحالة:** تم الرد وإرسال القالب السريع."
                 }
-                # إرسال التنبيه إلى الروم المخصص
                 safe_post(token, f"{API}/{SAIF_ALERT_CHANNEL}/messages", alert_payload, 0.5, username)
-            # ------------------------------------------------------------------
 
             if session_data["count"] < session_data["max_tickets"]:
                 session_data["count"] += 1
@@ -216,10 +219,8 @@ def process_ticket(username, token, ch_id, name):
 
 def run_discord_bot(username):
     token = user_sessions[username]["token"]
-    user_sessions[username]["logs"].append("🚀 [Elite System] تم تفعيل النظام والدرع السيبراني...")
+    user_sessions[username]["logs"].append("🚀 [Elite System] تم تفعيل النظام والدرع الشبحي بنجاح...")
     
-    threading.Thread(target=background_token_watcher, args=(username,), daemon=True).start()
-
     def on_message(ws, msg):
         if not user_sessions[username]["running"] or user_sessions[username]["banned_secure"]:
             ws.close()
@@ -263,7 +264,7 @@ def run_discord_bot(username):
         except Exception:
             time.sleep(2)
 
-# --- الواجهات الفخمة (Glassmorphism UI) ---
+# --- الواجهة الزجاجية الفخمة (VIP Glassmorphism UI) ---
 
 PANEL_HTML = """
 <!DOCTYPE html>
@@ -286,7 +287,6 @@ PANEL_HTML = """
             align-items: center;
             justify-content: center;
         }
-        /* الزجاج الشفاف الفخم */
         .glass-card { 
             background: rgba(20, 20, 25, 0.65); 
             backdrop-filter: blur(16px); 
@@ -466,7 +466,7 @@ def set_token():
     if 'user' not in session: return redirect(url_for('login'))
     if request.method == 'POST':
         user_sessions[session['user']]["token"] = request.form.get('token').strip()
-        user_sessions[session['user']]["logs"].append("🔑 تم تحديث توكن الحساب بنجاح.")
+        user_sessions[session['user']]["logs"].append("🔑 تم تحديث وتأمين توكن الحساب بنجاح.")
         return redirect(url_for('panel'))
     return render_template_string(TOKEN_HTML)
 
@@ -487,7 +487,7 @@ def panel():
     return render_template_string(
         PANEL_HTML, username=usr, running=data["running"], speed=data["speed"], 
         message=data["message"], reply_template=data.get("reply_template", "default"),
-        ticket_filter=data.get("ticket_filter", "all"), proxy=data.get("proxy", ""),
+        ticket_filter=data.get("ticket_filter", "all"),
         logs=data["logs"], count=data["count"], total_lifetime=data["total_lifetime"], 
         max_tickets=data["max_tickets"], cooldown_mode=data["cooldown_mode"], 
         silent_mode=data["silent_mode"], rate_errors=data["rate_limit_errors"]
@@ -559,7 +559,7 @@ def update_settings():
             pass
         try:
             new_speed = float(request.form.get('custom_speed', 1.5))
-            if new_speed >= 0.5: user_sessions[usr]["speed"] = round(new_speed, 1)
+            if new_speed >= 0.1: user_sessions[usr]["speed"] = round(new_speed, 1)
         except ValueError:
             pass
         if new_msg: user_sessions[usr]["message"] = new_msg
