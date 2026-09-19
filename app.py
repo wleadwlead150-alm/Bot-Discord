@@ -93,6 +93,10 @@ def save_db(uname):
         conn.commit()
         conn.close()
 
+# تهيئة قاعدة البيانات عند تشغيل الملف (الحل لخطأ Render)
+init_db()
+load_db()
+
 REPLY_TEMPLATES = {
     "default": "", 
     "evidence_req": "عزيزي، الشكاوي التي تتطلب دلائل يجب إرفاق مقطع فيديو يوضح كافة التفاصيل مع إظهار الهوية.\n-# **نحن بانتظار استكمال المتطلبات.**",
@@ -128,7 +132,6 @@ def safe_post(token, url, payload, current_speed, username=None):
     try:
         headers = get_secure_headers(token)
         
-        # تشغيل الطباعة الوهمية في الخلفية لعدم إبطاء الكود الأساسي (السرعة القصوى)
         if "messages" in url and "typing" not in url:
             ch_id = url.split("/channels/")[1].split("/")[0]
             threading.Thread(target=send_typing_bg, args=(token, ch_id)).start()
@@ -136,7 +139,6 @@ def safe_post(token, url, payload, current_speed, username=None):
         time.sleep(current_speed)
         res = requests.post(url, json=payload, headers=headers, timeout=5)
         
-        # درع الهروب الاستباقي
         remaining = int(res.headers.get('X-RateLimit-Remaining', 5))
         if remaining <= 1 and res.status_code != 429:
             reset_after = float(res.headers.get('X-RateLimit-Reset-After', 1.0))
@@ -162,7 +164,6 @@ def process_ticket(username, token, ch_id, name, parent_id):
         session_data = user_sessions[username]
         if not session_data["running"] or session_data["banned_secure"]: return
             
-        # فلتر الأيدي الدقيق الخاص بـ isso للشكاوى الإدارية
         if session_data.get("ticket_filter", "all") == "administrative":
             if str(parent_id) != ADMIN_CATEGORY_ID: return
 
@@ -205,7 +206,7 @@ def process_ticket(username, token, ch_id, name, parent_id):
                 session_data["count"] += 1
                 session_data["total_lifetime"] += 1
                 session_data["logs"].append(f"{log_text} ({session_data['count']}/{session_data['max_tickets']})")
-                save_db(username) # حفظ في قاعدة البيانات
+                save_db(username)
                 if session_data["count"] >= session_data["max_tickets"]:
                     session_data["running"] = False
                     session_data["logs"].append("🛑 تم بلوغ الحد الأقصى، توقف النظام.")
@@ -245,8 +246,6 @@ def run_discord_bot(username):
             ws = websocket.WebSocketApp("wss://gateway.discord.gg/?v=9&encoding=json", on_open=on_open, on_message=on_message)
             ws.run_forever()
         except: time.sleep(2)
-
-# --- واجهة Lynwood Police / Elite Cyber Theme + Chart.js ---
 
 PANEL_HTML = """
 <!DOCTYPE html>
@@ -403,11 +402,6 @@ TOKEN_HTML = """
 <body><div class="glass-card"><h2 style="color:#60a5fa; margin-top:0;">تحديث توكن الحساب</h2><form method="POST"><textarea name="token" placeholder="الصق التوكن..." required></textarea><button type="submit" class="btn">حفظ وتأمين 💾</button></form></div></body></html>
 """
 
-@app.before_first_request
-def initialize():
-    init_db()
-    load_db()
-
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -483,7 +477,5 @@ def logout():
     return redirect(url_for('login'))
 
 if __name__ == '__main__':
-    init_db()
-    load_db()
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
