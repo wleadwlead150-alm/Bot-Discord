@@ -1,4 +1,4 @@
-import json
+=import json
 import re
 import time
 import requests
@@ -19,6 +19,7 @@ USERS = {
     "Youssef": "oopp009987",
     "Kara": "oopp00998",
     "isso": "12345678"
+    "Azmy": "12345678"
 }
 
 SERVER_ID = "1272600775331414159"
