@@ -18,9 +18,8 @@ USERS = {
     "Marshall": "oopp0099",
     "Youssef": "oopp009987",
     "Kara": "oopp00998",
-       "isso": "12345678",
+    "isso": "12345678",
     "Azmy": "12345678"
-
 }
 
 SERVER_ID = "1272600775331414159"
@@ -28,6 +27,7 @@ API = "https://discord.com/api/v9/channels"
 SAIF_ALERT_CHANNEL = "1545711547169513483"
 ADMIN_CATEGORY_ID = "1353444395575414844"
 
+# 🚀 بناء قاعدة ذاكرة وتخزين مستقلة لكل يوزر 100% 🚀
 user_sessions = {
     u: {
         "running": False, "speed": 1.5, "thread": None, "token": "", "proxy": "",
@@ -35,12 +35,12 @@ user_sessions = {
         "reply_template": "default", "ticket_filter": "administrative" if u == "isso" else "all",
         "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 10, 
         "cooldown_mode": False, "skip_next": False, "silent_mode": False, 
-        "rate_limit_errors": 0, "banned_secure": False, "last_sent_text": "", "last_sent_time": 0
+        "rate_limit_errors": 0, "banned_secure": False, "last_sent_text": "", "last_sent_time": 0,
+        "active_tickets": set(), # قائمة تكتات خاصة بكل يوزر
+        "lock": threading.Lock() # قفل أمان خاص بكل يوزر لمنع التداخل
     } for u in USERS.keys()
 }
 
-active_tickets = set()
-state_lock = threading.Lock()
 db_lock = threading.Lock()
 
 # --- إعداد قاعدة البيانات الدائمة ---
@@ -95,7 +95,6 @@ def save_db(uname):
         conn.commit()
         conn.close()
 
-# تهيئة قاعدة البيانات عند تشغيل الملف (الحل لخطأ Render)
 init_db()
 load_db()
 
@@ -149,7 +148,7 @@ def safe_post(token, url, payload, current_speed, username=None):
             
         if res.status_code == 429:
             if username:
-                with state_lock:
+                with user_sessions[username]["lock"]:
                     user_sessions[username]["rate_limit_errors"] += 1
                     if user_sessions[username]["rate_limit_errors"] >= 3:
                         user_sessions[username]["running"] = False
@@ -162,8 +161,9 @@ def safe_post(token, url, payload, current_speed, username=None):
     except Exception: return None
 
 def process_ticket(username, token, ch_id, name, parent_id):
-    with state_lock:
-        session_data = user_sessions[username]
+    session_data = user_sessions[username]
+    
+    with session_data["lock"]:
         if not session_data["running"] or session_data["banned_secure"]: return
             
         if session_data.get("ticket_filter", "all") == "administrative":
@@ -180,8 +180,9 @@ def process_ticket(username, token, ch_id, name, parent_id):
         if session_data["count"] >= session_data["max_tickets"]:
             session_data["running"] = False
             return
-        if ch_id in active_tickets: return
-        active_tickets.add(ch_id)
+            
+        if ch_id in session_data["active_tickets"]: return
+        session_data["active_tickets"].add(ch_id)
 
     current_speed = session_data["speed"]
     tpl_key = session_data.get("reply_template", "default")
@@ -195,14 +196,14 @@ def process_ticket(username, token, ch_id, name, parent_id):
 
     res = safe_post(token, f"{API}/{ch_id}/messages", {"content": custom_msg}, current_speed, username)
     
-    with state_lock:
+    with session_data["lock"]:
         if res and res.status_code in [200, 201]:
             ticket_url = f"https://discord.com/channels/{SERVER_ID}/{ch_id}"
             log_text = f"✨ تم استلام تكت بنجاح **#{name}** | <a href='{ticket_url}' target='_blank'>الرابط</a>"
 
             if username == "Saif":
                 alert_payload = {"content": f"💎 **إشعار الإدارة - النظام المتقدم** 💎\n\nقام الإداري **سيف** باستلام تذكرة جديدة ✅\n\n🎫 **اسم التذكرة:** `#{name}`\n🔗 **رابط التذكرة:** {ticket_url}\n⚡ **الحالة:** تم الرد وإرسال القالب."}
-                safe_post(token, f"{API}/{SAIF_ALERT_CHANNEL}/messages", alert_payload, 0.5, username)
+                threading.Thread(target=safe_post, args=(token, f"{API}/{SAIF_ALERT_CHANNEL}/messages", alert_payload, 0.5, username)).start()
 
             if session_data["count"] < session_data["max_tickets"]:
                 session_data["count"] += 1
@@ -214,12 +215,12 @@ def process_ticket(username, token, ch_id, name, parent_id):
                     session_data["logs"].append("🛑 تم بلوغ الحد الأقصى، توقف النظام.")
         else:
             session_data["logs"].append(f"<span style='color: #ef4444;'>❌ تعذر استلام #{name}</span>")
-    with state_lock:
-        if ch_id in active_tickets: active_tickets.remove(ch_id)
+            
+        if ch_id in session_data["active_tickets"]: session_data["active_tickets"].remove(ch_id)
 
 def run_discord_bot(username):
     token = user_sessions[username]["token"]
-    user_sessions[username]["logs"].append("🚀 تم تفعيل النظام بأقصى سرعة وقاعدة بيانات آمنة...")
+    user_sessions[username]["logs"].append("🚀 تم تفعيل النظام بذاكرة مستقلة وأقصى سرعة...")
     
     def on_message(ws, msg):
         if not user_sessions[username]["running"] or user_sessions[username]["banned_secure"]:
@@ -235,8 +236,10 @@ def run_discord_bot(username):
                     ch_id = d.get("id")
                     parent_id = d.get("parent_id", "")
                     if time.time() - (((int(ch_id) >> 22) + 1420070400000) / 1000.0) > 90: return
-                    with state_lock:
+                    
+                    with user_sessions[username]["lock"]:
                         if user_sessions[username]["count"] >= user_sessions[username]["max_tickets"] or not user_sessions[username]["running"]: return
+                    
                     threading.Thread(target=process_ticket, args=(username, token, ch_id, name, parent_id)).start()
         except Exception: pass
 
