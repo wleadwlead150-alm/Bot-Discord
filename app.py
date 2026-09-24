@@ -30,6 +30,19 @@ SAIF_ALERT_CHANNEL = "1545711547169513483"
 ADMIN_CATEGORY_ID = "1353444395575414844"
 MASTER_PASSWORD = "MR_EAGLE_99"
 
+TARGET_CHANNELS = {
+    "lynwood": "111111111111111111", 
+    "santa cruz": "222222222222222222", 
+    "bell": "333333333333333333",
+    "glendale": "444444444444444444",
+    "covina": "555555555555555555",
+    "hills": "666666666666666666",
+    "chico": "777777777777777777",
+    "napa": "888888888888888888",
+    "mesa": "999999999999999999",
+    "default": "000000000000000000" 
+}
+
 THEMES = {
     "lynwood": {"name": "أزرق Lynwood Police", "prim": "#2563eb", "sec": "#1e3a8a", "bg": "#0a0f1d"},
     "cyber_red": {"name": "أحمر Cyberpunk", "prim": "#dc2626", "sec": "#7f1d1d", "bg": "#170505"},
@@ -48,7 +61,8 @@ user_sessions = {
         "active_tickets": set(), "lock": threading.Lock(),
         "theme": "lynwood", "ai_enabled": False, "ai_pro_enabled": False, "ai_rules": "أحتاج مساعدة|تفضل كيف أخدمك",
         "claimed_history": [],
-        "http_session": requests.Session()
+        "http_session": requests.Session(), 
+        "pending_tickets": {} 
     } for u in USERS.keys()
 }
 
@@ -129,13 +143,6 @@ def save_db(uname):
 init_db()
 load_db()
 
-REPLY_TEMPLATES = {
-    "default": "", 
-    "evidence_req": "عزيزي، الشكاوي التي تتطلب دلائل يجب إرفاق مقطع فيديو يوضح كافة التفاصيل مع إظهار الهوية.\n-# **نحن بانتظار استكمال المتطلبات.**",
-    "review_wait": "أهلاً بك، جاري مراجعة طلبك بكل دقة. نرجو التحلي بالصبر.\n\n-# **فريق الإدارة في خدمتكم**",
-    "ban_evidence": "نرجو الانتظار قليلاً ريثما يتم جلب تفاصيل التوثيق والأدلة الخاصة بالخادم."
-}
-
 def get_secure_headers(token):
     build_num = random.randint(320000, 325000)
     props = {"os": "iOS", "browser": "Discord Client", "device": "iPhone 13, pro, max", "system_version": "17.5", "client_build_number": build_num, "client_version": "241.0"}
@@ -161,6 +168,7 @@ def safe_post(username, url, payload, current_speed, is_claim=False):
             threading.Thread(target=send_typing_bg, args=(http_session, typing_url)).start()
             
         time.sleep(current_speed)
+        
         res = http_session.post(url, json=payload, timeout=5)
         
         remaining = int(res.headers.get('X-RateLimit-Remaining', 5))
@@ -175,7 +183,32 @@ def safe_post(username, url, payload, current_speed, is_claim=False):
         return res
     except Exception: return None
 
-# 🧠 عامل الذكاء الاصطناعي (AI PRO - المراقبة الحصرية للتكتات) 🧠
+def find_target_channel(http_session, token, server_name):
+    if not server_name or server_name == "default": return None
+    try:
+        headers = get_secure_headers(token)
+        res = http_session.get(f"[https://discord.com/api/v9/guilds/](https://discord.com/api/v9/guilds/){SERVER_ID}/channels", headers=headers, timeout=5)
+        if res.status_code == 200:
+            channels = res.json()
+            search_key = server_name.lower().replace(" ", "-")
+            target_id = None
+            
+            for c in channels:
+                c_name = c.get("name", "").lower()
+                if c.get("type") == 0 and "طلبات" in c_name and search_key in c_name:
+                    target_id = c["id"]
+                    break
+            
+            if not target_id:
+                for c in channels:
+                    c_name = c.get("name", "").lower()
+                    if c.get("type") == 0 and "شات" in c_name and search_key in c_name:
+                        target_id = c["id"]
+                        break
+            return target_id
+    except: pass
+    return None
+
 def ai_worker(username, ch_id, ticket_name):
     d = user_sessions[username]
     http_session = d["http_session"]
@@ -183,10 +216,33 @@ def ai_worker(username, ch_id, ticket_name):
     ai_pro_on = d.get("ai_pro_enabled")
     if not (ai_on or ai_pro_on): return
 
-    seen_msgs = set()
-    ai_pro_state = 0 # 0 = ننتظر كلام اللاعب | 1 = ننتظر صورة الحظر | 2 = ننتظر فيديو الشكوى
+    server_name = "default"
+    player_name = "غير معروف"
+    ticket_number = re.sub(r'\D', '', ticket_name)
+    if not ticket_number: ticket_number = ticket_name
 
-    # المراقبة لمدة 3 دقائق (60 فحص)
+    KNOWN_SERVERS = ["lynwood", "santa cruz", "bell", "glendale", "covina", "hills", "chico", "napa", "mesa"]
+
+    try:
+        time.sleep(1.5) 
+        init_res = http_session.get(f"{API}/{ch_id}/messages?limit=10", timeout=5)
+        if init_res.status_code == 200:
+            msgs = init_res.json()
+            for m in msgs:
+                if m.get("author", {}).get("bot", False): 
+                    content = m.get("content", "").lower()
+                    embeds = str(m.get("embeds", [])).lower()
+                    for srv in KNOWN_SERVERS:
+                        if srv in embeds or srv in content:
+                            server_name = srv
+                            break
+                    mentions = m.get("mentions", [])
+                    if mentions: player_name = mentions[0].get("username", "غير معروف")
+    except Exception: pass
+
+    last_msg_id = None
+    ai_pro_state = 0 
+
     for _ in range(60): 
         time.sleep(3)
         if not d["running"]: break
@@ -194,75 +250,83 @@ def ai_worker(username, ch_id, ticket_name):
             res = http_session.get(f"{API}/{ch_id}/messages?limit=5", timeout=5)
             if res.status_code == 200:
                 msgs = res.json()
-                
-                # ترتيب الرسائل من الأقدم للأحدث لقراءتها بشكل طبيعي
-                for m in reversed(msgs):
-                    msg_id = m["id"]
-                    if msg_id in seen_msgs: continue 
-                    seen_msgs.add(msg_id)
+                for m in msgs:
+                    if m["id"] == last_msg_id: continue 
                     
-                    # إذا كانت الرسالة ليست من البوت وليست من الإداري نفسه
                     if not m.get("author", {}).get("bot", False) and m.get("author", {}).get("username") != username:
                         player_text = m.get("content", "").lower()
+                        last_msg_id = m["id"]
                         
-                        # === AI العادي ===
                         if ai_on and not ai_pro_on and d.get("ai_rules"):
                             rules = d["ai_rules"].split('\n')
                             for rule in rules:
                                 if '|' in rule:
                                     keyword, reply = rule.split('|', 1)
                                     if keyword.strip().lower() in player_text:
-                                        time.sleep(1.5) 
-                                        safe_post(username, f"{API}/{ch_id}/messages", {"content": reply.strip()}, 0)
+                                        time.sleep(2) 
+                                        safe_post(username, f"{API}/{ch_id}/messages", {"content": reply.strip()}, 1.5)
                                         d["logs"].insert(0, f"🤖 [AI] رصد الكلمة، تم الرد.")
                                         ai_on = False 
                                         break
                         
-                        # === AI Pro V3 (الأساسي) ===
                         if ai_pro_on:
                             if ai_pro_state == 0:
-                                # هل اللاعب يطلب دليل حظر؟
-                                if any(word in player_text for word in ["حظر", "حضر", "باند", "فك", "سبب"]):
-                                    time.sleep(1.5) 
-                                    safe_post(username, f"{API}/{ch_id}/typing", {}, 0)
-                                    time.sleep(1)
+                                time.sleep(2) 
+                                safe_post(username, f"{API}/{ch_id}/typing", {}, 0)
+                                time.sleep(1)
+                                
+                                if any(word in player_text for word in ["حظر", "حضر", "باند", "فك"]):
                                     reply_msg = "** اهلاً عزيزي قم برفق الصوره الدليل مع اسمك داخل الخادم **"
                                     safe_post(username, f"{API}/{ch_id}/messages", {"content": reply_msg}, 0)
                                     d["logs"].insert(0, "👑 [AI Pro] مسار طلب حظر.")
                                     ai_pro_state = 1
-                                    
-                                # هل اللاعب يشتكي على أحد؟
+                                    break
+                                
                                 elif any(word in player_text for word in ["شكوى", "شكى", "سب", "شتيمه", "شتم", "نصب", "دي ام"]):
-                                    time.sleep(1.5) 
-                                    safe_post(username, f"{API}/{ch_id}/typing", {}, 0)
-                                    time.sleep(1)
                                     reply_msg = "** اهلاً عزيزي ارجو منك إرفاق الدليل مع اسم لاعب **"
                                     safe_post(username, f"{API}/{ch_id}/messages", {"content": reply_msg}, 0)
                                     d["logs"].insert(0, "👑 [AI Pro] مسار طلب شكوى.")
                                     ai_pro_state = 2
+                                    break
 
-                            # إذا كنا ننتظر رفع صورة (حظر) أو فيديو (شكوى)
                             elif ai_pro_state == 1 or ai_pro_state == 2:
                                 urls = re.findall(r'(https?://[^\s]+)', player_text)
                                 attachments = m.get("attachments", [])
                                 evidence_url = urls[0] if urls else (attachments[0].get("url") if attachments else None)
                                 
                                 if evidence_url:
-                                    time.sleep(1.5)
+                                    time.sleep(2)
                                     safe_post(username, f"{API}/{ch_id}/typing", {}, 0)
                                     time.sleep(1)
                                     
-                                    if ai_pro_state == 1:
-                                        # رسالة الحظر المطلوبة
-                                        thanks_msg = "** سيتم طلب دليل حضرك الرجاء تحلى بل صبر  **"
-                                    else:
-                                        # رسالة الشكوى المطلوبة (تم إزالة الفواصل البرمجية ```)
-                                        thanks_msg = "__شكرًا لإرسال المعلومات المطلوبة :__\nجاري العمل على الشكوى ⏱️ طلبك الآن قيد المراجعة من قبل الفريق المختص. سنقوم بإبلاغك فور اتخاذ أي إجراء بخصوص الشكوى. ⏳ يرجى التحلي بالصبر، وسنعود إليك في أقرب وقت ممكن."
+                                    # النص مصاغ بدون استخدام علامات تنصيص ثلاثية لتجنب خطأ الساينتاكس
+                                    thanks_msg = "__شكرًا لإرسال المعلومات المطلوبة :__\n```\nجاري العمل على الشكوى ⏱️ طلبك الآن قيد المراجعة من قبل الفريق المختص. سنقوم بإبلاغك فور اتخاذ أي إجراء بخصوص الشكوى. ⏳ يرجى التحلي بالصبر، وسنعود إليك في أقرب وقت ممكن.\n```"
                                     
                                     safe_post(username, f"{API}/{ch_id}/messages", {"content": thanks_msg}, 0)
-                                    d["logs"].insert(0, f"👑 [AI Pro] تم استلام الدليل وإنهاء الطلب بنجاح.")
                                     
-                                    # التوقف عن المراقبة لأن العملية اكتملت ولا نريد تحويله لأي سيرفر
+                                    target_channel_id = find_target_channel(http_session, d["token"], server_name)
+                                    
+                                    if target_channel_id:
+                                        if ai_pro_state == 1:
+                                            report_msg = f"** اهلاً ممكن دليل حضر لاعب {player_name} رقم التذكره {ticket_number} **\n{evidence_url}"
+                                        else:
+                                            report_msg = f"**\nرقم التذكره : {ticket_number}\nاسم لاعب : {player_name}\n**\n{evidence_url}"
+                                        
+                                        safe_post(username, f"{API}/{target_channel_id}/messages", {"content": report_msg}, 0)
+                                        d["logs"].insert(0, f"👑 [AI Pro] تم رفع التقرير تلقائياً إلى روم {server_name}.")
+                                    else:
+                                        # العودة للقاموس الاحتياطي إذا لم يجد الروم
+                                        fallback_ch = TARGET_CHANNELS.get(server_name, TARGET_CHANNELS["default"])
+                                        if fallback_ch != "000000000000000000":
+                                            if ai_pro_state == 1:
+                                                report_msg = f"** اهلاً ممكن دليل حضر لاعب {player_name} رقم التذكره {ticket_number} **\n{evidence_url}"
+                                            else:
+                                                report_msg = f"**\nرقم التذكره : {ticket_number}\nاسم لاعب : {player_name}\n**\n{evidence_url}"
+                                            safe_post(username, f"{API}/{fallback_ch}/messages", {"content": report_msg}, 0)
+                                            d["logs"].insert(0, f"👑 [AI Pro] تم رفع التقرير إلى الروم الاحتياطي لـ {server_name}.")
+                                        else:
+                                            d["logs"].insert(0, f"⚠️ [AI Pro] لم يتم العثور على روم طلبات لسيرفر {server_name}.")
+                                    
                                     return 
         except Exception: pass
 
@@ -286,21 +350,18 @@ def process_ticket(username, ch_id, name, parent_id):
         if ch_id in session_data["active_tickets"]: return
         session_data["active_tickets"].add(ch_id)
 
-    current_speed = session_data["speed"]
     custom_msg = session_data["message"]
-    
     now_ts = time.time()
     if session_data["last_sent_text"] == custom_msg and (now_ts - session_data["last_sent_time"] < 2.0):
         custom_msg += "᠎" * random.randint(1, 2)
     session_data["last_sent_text"] = custom_msg
     session_data["last_sent_time"] = now_ts
 
-    # 🚀 الاستلام الفوري المباشر (Classic Lightning Fast) - بدون أي انتظار 🚀
-    res = safe_post(username, f"{API}/{ch_id}/messages", {"content": custom_msg}, current_speed, is_claim=True)
+    res = safe_post(username, f"{API}/{ch_id}/messages", {"content": custom_msg}, 0, is_claim=True)
     
     with session_data["lock"]:
         if res and res.status_code in [200, 201]:
-            ticket_url = f"https://discord.com/channels/{SERVER_ID}/{ch_id}"
+            ticket_url = f"[https://discord.com/channels/](https://discord.com/channels/){SERVER_ID}/{ch_id}"
             log_text = f"✨ استلمت **#{name}** | <a href='{ticket_url}' target='_blank'>الرابط</a>"
 
             session_data["claimed_history"].append({"id": ch_id, "name": name})
@@ -322,7 +383,6 @@ def process_ticket(username, ch_id, name, parent_id):
                 if len(session_data["logs"]) > 20: session_data["logs"].pop()
                 save_db(username)
                 
-                # تشغيل الذكاء الاصطناعي في الخلفية
                 threading.Thread(target=ai_worker, args=(username, ch_id, name), daemon=True).start()
 
                 if session_data["count"] >= session_data["max_tickets"]:
@@ -333,11 +393,30 @@ def process_ticket(username, ch_id, name, parent_id):
             
         if ch_id in session_data["active_tickets"]: session_data["active_tickets"].remove(ch_id)
 
+def sniper_claim(username, token, ch_id, name, parent_id):
+    d = user_sessions[username]
+    http_session = d["http_session"]
+    time.sleep(0.5)
+    
+    for _ in range(12): 
+        try:
+            res = http_session.get(f"{API}/{ch_id}/messages?limit=3", headers=get_secure_headers(token), timeout=2)
+            if res.status_code == 200:
+                msgs = res.json()
+                bot_msgs = [m for m in msgs if m.get("author", {}).get("bot", False)]
+                if len(bot_msgs) >= 2:
+                    process_ticket(username, ch_id, name, parent_id)
+                    return
+        except: pass
+        time.sleep(0.3)
+        
+    process_ticket(username, ch_id, name, parent_id)
+
 def run_discord_bot(username):
     d = user_sessions[username]
     token = d["token"]
     
-    try: d["http_session"].get("https://discord.com/api/v9/users/@me", headers=get_secure_headers(token), timeout=5)
+    try: d["http_session"].get("[https://discord.com/api/v9/users/@me](https://discord.com/api/v9/users/@me)", headers=get_secure_headers(token), timeout=5)
     except: pass
     
     d["logs"].insert(0, "🚀 تم تفعيل رادار ديسكورد والاتصال الساخن للسرعة القصوى...")
@@ -352,32 +431,23 @@ def run_discord_bot(username):
             
             if raw.get("op") == 10: ws.send(json.dumps({"op": 1, "d": None}))
             
-            # 🚀 الاستلام المباشر العادي: أول ما يفتح التكت يضرب فوراً بدون أي قناص
             if t == "CHANNEL_CREATE":
                 if evt_data.get("guild_id") == SERVER_ID and evt_data.get("type") == 0:
                     ch_id = evt_data.get("id")
-                    name = evt_data.get("name", "").lower()
-                    parent_id = evt_data.get("parent_id", "")
-                    
                     if time.time() - (((int(ch_id) >> 22) + 1420070400000) / 1000.0) > 90: return
-                    
                     with d["lock"]:
                         if d["count"] >= d["max_tickets"] or not d["running"]: return
-                    
-                    # ينطلق فوراً ⚡
-                    threading.Thread(target=process_ticket, args=(username, ch_id, name, parent_id)).start()
+                    threading.Thread(target=sniper_claim, args=(username, token, ch_id, evt_data.get("name", "").lower(), evt_data.get("parent_id", "")), daemon=True).start()
         except: pass
 
     def on_open(ws):
-        ws.send(json.dumps({"op": 2, "d": {"token": token, "properties": {"os": "iOS", "browser": "Discord Client", "device": "iPhone"}, "intents": 1 | 512}}))
+        ws.send(json.dumps({"op": 2, "d": {"token": token, "properties": {"os": "iOS", "browser": "Discord Client", "device": "iPhone"}, "intents": 1 << 0}}))
 
     while d["running"] and not d["banned_secure"]:
         try:
             ws = websocket.WebSocketApp("wss://gateway.discord.gg/?v=9&encoding=json", on_open=on_open, on_message=on_message)
             ws.run_forever()
         except: time.sleep(2)
-
-# ================= واجهات HTML =================
 
 LANDING_HTML = """
 <!DOCTYPE html>
@@ -387,7 +457,7 @@ LANDING_HTML = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DISCORD TICKET</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&display=swap');
+        @import url('[https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&display=swap](https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&display=swap)');
         body { background: #030712; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: 'Orbitron', sans-serif; overflow: hidden; }
         .glitch-wrapper { position: relative; text-align: center; }
         h1 { font-size: 3.5rem; margin: 0; letter-spacing: 4px; color: #f8fafc; text-shadow: 0 0 20px rgba(255,255,255,0.2); }
@@ -413,7 +483,7 @@ LOGIN_HTML = """
     <meta charset="UTF-8">
     <title>بوابة العبور</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@600;800&display=swap');
+        @import url('[https://fonts.googleapis.com/css2?family=Cairo:wght@600;800&display=swap](https://fonts.googleapis.com/css2?family=Cairo:wght@600;800&display=swap)');
         body { background: #030712; color: #fff; font-family: 'Cairo', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
         .card { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(15px); padding: 40px; border-radius: 16px; border: 1px solid rgba(59, 130, 246, 0.2); box-shadow: 0 20px 50px rgba(0,0,0,0.8); width: 320px; text-align: center; }
         input { width: 100%; padding: 12px; margin: 10px 0; background: rgba(0,0,0,0.6); border: 1px solid #1e293b; color: #fff; border-radius: 8px; text-align: center; outline: none; transition: 0.3s; box-sizing: border-box;}
@@ -442,9 +512,9 @@ PANEL_HTML = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>M.R Elite Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="[https://cdn.jsdelivr.net/npm/chart.js](https://cdn.jsdelivr.net/npm/chart.js)"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap');
+        @import url('[https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap](https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap)');
         
         :root { --prim: {{ theme_data.prim }}; --sec: {{ theme_data.sec }}; --bg: {{ theme_data.bg }}; }
         
@@ -493,7 +563,7 @@ PANEL_HTML = """
 </head>
 <body>
     <div class="glass-card">
-        <h1>M.R SYSTEM</h1>
+        <h1>M.R SYSTEM (SNIPER)</h1>
         <div class="user-tag">👤 {{ username }}</div>
         
         <div class="badge-container">
