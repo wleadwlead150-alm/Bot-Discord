@@ -150,13 +150,14 @@ def send_typing_bg(session_http, url):
     try: session_http.post(url, timeout=2)
     except: pass
 
-def safe_post(username, url, payload, current_speed, is_claim=False):
+def safe_post(username, url, payload, current_speed):
     d = user_sessions[username]
     http_session = d["http_session"]
     http_session.headers.update(get_secure_headers(d["token"]))
     
     try:
-        if "messages" in url and "typing" not in url and not is_claim:
+        # إذا كانت السرعة أكبر من 0، نشغل "يكتب الآن" ليبدو بشرياً
+        if "messages" in url and "typing" not in url and current_speed > 0:
             typing_url = f"{API}/{url.split('/channels/')[1].split('/')[0]}/typing"
             threading.Thread(target=send_typing_bg, args=(http_session, typing_url)).start()
             
@@ -171,12 +172,12 @@ def safe_post(username, url, payload, current_speed, is_claim=False):
         if res.status_code == 429:
             retry_after = res.json().get("retry_after", current_speed + 1.0)
             time.sleep(retry_after + 0.1)
-            return safe_post(username, url, payload, current_speed, is_claim)
+            return safe_post(username, url, payload, current_speed)
         return res
     except Exception: return None
 
-# 🧠 عامل الذكاء الاصطناعي (AI PRO - المراقبة الحصرية للتكتات) 🧠
-def ai_worker(username, ch_id, ticket_name):
+# 🧠 عامل الذكاء الاصطناعي (AI PRO) 🧠
+def ai_worker(username, ch_id):
     d = user_sessions[username]
     http_session = d["http_session"]
     ai_on = d.get("ai_enabled")
@@ -186,7 +187,6 @@ def ai_worker(username, ch_id, ticket_name):
     seen_msgs = set()
     ai_pro_state = 0 # 0 = ننتظر كلام اللاعب | 1 = ننتظر صورة الحظر | 2 = ننتظر فيديو الشكوى
 
-    # المراقبة لمدة 3 دقائق (60 فحص)
     for _ in range(60): 
         time.sleep(3)
         if not d["running"]: break
@@ -195,13 +195,11 @@ def ai_worker(username, ch_id, ticket_name):
             if res.status_code == 200:
                 msgs = res.json()
                 
-                # ترتيب الرسائل من الأقدم للأحدث لقراءتها بشكل طبيعي
                 for m in reversed(msgs):
                     msg_id = m["id"]
                     if msg_id in seen_msgs: continue 
                     seen_msgs.add(msg_id)
                     
-                    # إذا كانت الرسالة ليست من البوت وليست من الإداري نفسه
                     if not m.get("author", {}).get("bot", False) and m.get("author", {}).get("username") != username:
                         player_text = m.get("content", "").lower()
                         
@@ -218,10 +216,9 @@ def ai_worker(username, ch_id, ticket_name):
                                         ai_on = False 
                                         break
                         
-                        # === AI Pro V3 (الأساسي) ===
+                        # === AI Pro (نظام الباند والشكاوى) ===
                         if ai_pro_on:
                             if ai_pro_state == 0:
-                                # هل اللاعب يطلب دليل حظر؟
                                 if any(word in player_text for word in ["حظر", "حضر", "باند", "فك", "سبب"]):
                                     time.sleep(1.5) 
                                     safe_post(username, f"{API}/{ch_id}/typing", {}, 0)
@@ -231,7 +228,6 @@ def ai_worker(username, ch_id, ticket_name):
                                     d["logs"].insert(0, "👑 [AI Pro] مسار طلب حظر.")
                                     ai_pro_state = 1
                                     
-                                # هل اللاعب يشتكي على أحد؟
                                 elif any(word in player_text for word in ["شكوى", "شكى", "سب", "شتيمه", "شتم", "نصب", "دي ام"]):
                                     time.sleep(1.5) 
                                     safe_post(username, f"{API}/{ch_id}/typing", {}, 0)
@@ -241,7 +237,6 @@ def ai_worker(username, ch_id, ticket_name):
                                     d["logs"].insert(0, "👑 [AI Pro] مسار طلب شكوى.")
                                     ai_pro_state = 2
 
-                            # إذا كنا ننتظر رفع صورة (حظر) أو فيديو (شكوى)
                             elif ai_pro_state == 1 or ai_pro_state == 2:
                                 urls = re.findall(r'(https?://[^\s]+)', player_text)
                                 attachments = m.get("attachments", [])
@@ -253,16 +248,12 @@ def ai_worker(username, ch_id, ticket_name):
                                     time.sleep(1)
                                     
                                     if ai_pro_state == 1:
-                                        # رسالة الحظر المطلوبة
                                         thanks_msg = "** سيتم طلب دليل حضرك الرجاء تحلى بل صبر  **"
                                     else:
-                                        # رسالة الشكوى المطلوبة (تم إزالة الفواصل البرمجية ```)
                                         thanks_msg = "__شكرًا لإرسال المعلومات المطلوبة :__\nجاري العمل على الشكوى ⏱️ طلبك الآن قيد المراجعة من قبل الفريق المختص. سنقوم بإبلاغك فور اتخاذ أي إجراء بخصوص الشكوى. ⏳ يرجى التحلي بالصبر، وسنعود إليك في أقرب وقت ممكن."
                                     
                                     safe_post(username, f"{API}/{ch_id}/messages", {"content": thanks_msg}, 0)
                                     d["logs"].insert(0, f"👑 [AI Pro] تم استلام الدليل وإنهاء الطلب بنجاح.")
-                                    
-                                    # التوقف عن المراقبة لأن العملية اكتملت ولا نريد تحويله لأي سيرفر
                                     return 
         except Exception: pass
 
@@ -286,6 +277,7 @@ def process_ticket(username, ch_id, name, parent_id):
         if ch_id in session_data["active_tickets"]: return
         session_data["active_tickets"].add(ch_id)
 
+    # 🚀 هنا التحكم الكامل بالسرعة من لوحة التحكم 🚀
     current_speed = session_data["speed"]
     custom_msg = session_data["message"]
     
@@ -295,12 +287,11 @@ def process_ticket(username, ch_id, name, parent_id):
     session_data["last_sent_text"] = custom_msg
     session_data["last_sent_time"] = now_ts
 
-    # 🚀 الاستلام الفوري المباشر (Classic Lightning Fast) - بدون أي انتظار 🚀
-    res = safe_post(username, f"{API}/{ch_id}/messages", {"content": custom_msg}, current_speed, is_claim=True)
+    res = safe_post(username, f"{API}/{ch_id}/messages", {"content": custom_msg}, current_speed)
     
     with session_data["lock"]:
         if res and res.status_code in [200, 201]:
-            ticket_url = f"https://discord.com/channels/{SERVER_ID}/{ch_id}"
+            ticket_url = f"[https://discord.com/channels/](https://discord.com/channels/){SERVER_ID}/{ch_id}"
             log_text = f"✨ استلمت **#{name}** | <a href='{ticket_url}' target='_blank'>الرابط</a>"
 
             session_data["claimed_history"].append({"id": ch_id, "name": name})
@@ -322,8 +313,7 @@ def process_ticket(username, ch_id, name, parent_id):
                 if len(session_data["logs"]) > 20: session_data["logs"].pop()
                 save_db(username)
                 
-                # تشغيل الذكاء الاصطناعي في الخلفية
-                threading.Thread(target=ai_worker, args=(username, ch_id, name), daemon=True).start()
+                threading.Thread(target=ai_worker, args=(username, ch_id), daemon=True).start()
 
                 if session_data["count"] >= session_data["max_tickets"]:
                     session_data["running"] = False
@@ -337,7 +327,7 @@ def run_discord_bot(username):
     d = user_sessions[username]
     token = d["token"]
     
-    try: d["http_session"].get("https://discord.com/api/v9/users/@me", headers=get_secure_headers(token), timeout=5)
+    try: d["http_session"].get("[https://discord.com/api/v9/users/@me](https://discord.com/api/v9/users/@me)", headers=get_secure_headers(token), timeout=5)
     except: pass
     
     d["logs"].insert(0, "🚀 تم تفعيل رادار ديسكورد والاتصال الساخن للسرعة القصوى...")
@@ -352,7 +342,7 @@ def run_discord_bot(username):
             
             if raw.get("op") == 10: ws.send(json.dumps({"op": 1, "d": None}))
             
-            # 🚀 الاستلام المباشر العادي: أول ما يفتح التكت يضرب فوراً بدون أي قناص
+            # 🚀 الاستلام المباشر العادي بدون انتظار أي رسالة
             if t == "CHANNEL_CREATE":
                 if evt_data.get("guild_id") == SERVER_ID and evt_data.get("type") == 0:
                     ch_id = evt_data.get("id")
@@ -364,7 +354,6 @@ def run_discord_bot(username):
                     with d["lock"]:
                         if d["count"] >= d["max_tickets"] or not d["running"]: return
                     
-                    # ينطلق فوراً ⚡
                     threading.Thread(target=process_ticket, args=(username, ch_id, name, parent_id)).start()
         except: pass
 
@@ -387,7 +376,7 @@ LANDING_HTML = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DISCORD TICKET</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&display=swap');
+        @import url('[https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&display=swap](https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&display=swap)');
         body { background: #030712; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: 'Orbitron', sans-serif; overflow: hidden; }
         .glitch-wrapper { position: relative; text-align: center; }
         h1 { font-size: 3.5rem; margin: 0; letter-spacing: 4px; color: #f8fafc; text-shadow: 0 0 20px rgba(255,255,255,0.2); }
@@ -413,7 +402,7 @@ LOGIN_HTML = """
     <meta charset="UTF-8">
     <title>بوابة العبور</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@600;800&display=swap');
+        @import url('[https://fonts.googleapis.com/css2?family=Cairo:wght@600;800&display=swap](https://fonts.googleapis.com/css2?family=Cairo:wght@600;800&display=swap)');
         body { background: #030712; color: #fff; font-family: 'Cairo', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
         .card { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(15px); padding: 40px; border-radius: 16px; border: 1px solid rgba(59, 130, 246, 0.2); box-shadow: 0 20px 50px rgba(0,0,0,0.8); width: 320px; text-align: center; }
         input { width: 100%; padding: 12px; margin: 10px 0; background: rgba(0,0,0,0.6); border: 1px solid #1e293b; color: #fff; border-radius: 8px; text-align: center; outline: none; transition: 0.3s; box-sizing: border-box;}
@@ -442,9 +431,9 @@ PANEL_HTML = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>M.R Elite Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="[https://cdn.jsdelivr.net/npm/chart.js](https://cdn.jsdelivr.net/npm/chart.js)"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap');
+        @import url('[https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap](https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap)');
         
         :root { --prim: {{ theme_data.prim }}; --sec: {{ theme_data.sec }}; --bg: {{ theme_data.bg }}; }
         
@@ -527,7 +516,7 @@ PANEL_HTML = """
                 <textarea name="ai_rules" class="ai-textarea" placeholder="أحتاج مساعدة|تفضل كيف أخدمك">{{ ai_rules }}</textarea>
                 <div style="display:flex; gap:8px;">
                     <div style="flex:1;"><div class="config-title">الحد الأقصى:</div><input type="number" name="max_tickets" value="{{ max_tickets }}" min="1"></div>
-                    <div style="flex:1;"><div class="config-title">السرعة:</div><input type="number" step="0.01" name="custom_speed" value="{{ speed }}"></div>
+                    <div style="flex:1;"><div class="config-title">السرعة:</div><input type="number" step="0.01" name="custom_speed" value="{{ speed }}" min="0"></div>
                 </div>
                 <div class="config-title">نص الرد الافتراضي:</div>
                 <textarea name="custom_msg">{{ message }}</textarea>
