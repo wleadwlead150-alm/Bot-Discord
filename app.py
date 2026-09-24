@@ -30,7 +30,18 @@ SAIF_ALERT_CHANNEL = "1545711547169513483"
 ADMIN_CATEGORY_ID = "1353444395575414844"
 MASTER_PASSWORD = "MR_EAGLE_99"
 
-KNOWN_SERVERS = ["lynwood", "santa cruz", "bell", "glendale", "covina", "hills", "chico", "napa", "mesa"]
+TARGET_CHANNELS = {
+    "lynwood": "111111111111111111", 
+    "santa cruz": "222222222222222222", 
+    "bell": "333333333333333333",
+    "glendale": "444444444444444444",
+    "covina": "555555555555555555",
+    "hills": "666666666666666666",
+    "chico": "777777777777777777",
+    "napa": "888888888888888888",
+    "mesa": "999999999999999999",
+    "default": "000000000000000000" 
+}
 
 THEMES = {
     "lynwood": {"name": "أزرق Lynwood Police", "prim": "#2563eb", "sec": "#1e3a8a", "bg": "#0a0f1d"},
@@ -50,7 +61,8 @@ user_sessions = {
         "active_tickets": set(), "lock": threading.Lock(),
         "theme": "lynwood", "ai_enabled": False, "ai_pro_enabled": False, "ai_rules": "أحتاج مساعدة|تفضل كيف أخدمك",
         "claimed_history": [],
-        "http_session": requests.Session()
+        "http_session": requests.Session(), 
+        "pending_tickets": {} 
     } for u in USERS.keys()
 }
 
@@ -131,6 +143,13 @@ def save_db(uname):
 init_db()
 load_db()
 
+REPLY_TEMPLATES = {
+    "default": "", 
+    "evidence_req": "عزيزي، الشكاوي التي تتطلب دلائل يجب إرفاق مقطع فيديو يوضح كافة التفاصيل مع إظهار الهوية.\n-# **نحن بانتظار استكمال المتطلبات.**",
+    "review_wait": "أهلاً بك، جاري مراجعة طلبك بكل دقة. نرجو التحلي بالصبر.\n\n-# **فريق الإدارة في خدمتكم**",
+    "ban_evidence": "نرجو الانتظار قليلاً ريثما يتم جلب تفاصيل التوثيق والأدلة الخاصة بالخادم."
+}
+
 def get_secure_headers(token):
     build_num = random.randint(320000, 325000)
     props = {"os": "iOS", "browser": "Discord Client", "device": "iPhone 13, pro, max", "system_version": "17.5", "client_build_number": build_num, "client_version": "241.0"}
@@ -156,6 +175,7 @@ def safe_post(username, url, payload, current_speed, is_claim=False):
             threading.Thread(target=send_typing_bg, args=(http_session, typing_url)).start()
             
         time.sleep(current_speed)
+        
         res = http_session.post(url, json=payload, timeout=5)
         
         remaining = int(res.headers.get('X-RateLimit-Remaining', 5))
@@ -169,32 +189,6 @@ def safe_post(username, url, payload, current_speed, is_claim=False):
             return safe_post(username, url, payload, current_speed, is_claim)
         return res
     except Exception: return None
-
-def find_target_channel(http_session, token, server_name):
-    if not server_name or server_name == "default": return None
-    try:
-        headers = get_secure_headers(token)
-        res = http_session.get(f"https://discord.com/api/v9/guilds/{SERVER_ID}/channels", headers=headers, timeout=5)
-        if res.status_code == 200:
-            channels = res.json()
-            search_key = server_name.lower().replace(" ", "-")
-            target_id = None
-            
-            for c in channels:
-                c_name = c.get("name", "").lower()
-                if c.get("type") == 0 and "طلبات" in c_name and search_key in c_name:
-                    target_id = c["id"]
-                    break
-            
-            if not target_id:
-                for c in channels:
-                    c_name = c.get("name", "").lower()
-                    if c.get("type") == 0 and "شات" in c_name and search_key in c_name:
-                        target_id = c["id"]
-                        break
-            return target_id
-    except: pass
-    return None
 
 def ai_worker(username, ch_id, ticket_name):
     d = user_sessions[username]
@@ -217,8 +211,8 @@ def ai_worker(username, ch_id, ticket_name):
                 if m.get("author", {}).get("bot", False): 
                     content = m.get("content", "").lower()
                     embeds = str(m.get("embeds", [])).lower()
-                    for srv in KNOWN_SERVERS:
-                        if srv in embeds or srv in content:
+                    for srv in TARGET_CHANNELS.keys():
+                        if srv != "default" and (srv in embeds or srv in content):
                             server_name = srv
                             break
                     mentions = m.get("mentions", [])
@@ -283,4 +277,6 @@ def ai_worker(username, ch_id, ticket_name):
                                     time.sleep(2)
                                     safe_post(username, f"{API}/{ch_id}/typing", {}, 0)
                                     time.sleep(1)
-                                    thanks_msg = "__شكرًا لإرسال المعلومات المطلوبة :__\n```جاري العمل على الشكوى ⏱️ طلبك الآن قيد المراجعة من قبل الفريق المختص. سنقوم بإبلاغك فور اتخاذ أي إجراء بخصوص الشكوى. ⏳ يرجى التحلي بالصبر، وسنعود إليك في أقرب وقت ممكن. 
+                                    
+                                    thanks_msg = """__شكرًا لإرسال المعلومات المطلوبة :__
+```جاري العمل على الشكوى ⏱️ طلبك الآن قيد المراجعة من قبل الفريق المختص. سنقوم بإبلاغك فور اتخاذ أي إجراء بخصوص الشكوى. ⏳ يرجى التحلي بالصبر، وسنعود إليك في أقرب وقت ممكن.
