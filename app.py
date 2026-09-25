@@ -29,6 +29,7 @@ API = "https://discord.com/api/v9/channels"
 SAIF_ALERT_CHANNEL = "1545711547169513483"
 MASTER_PASSWORD = "MR_EAGLE_99"
 
+# 🎯 أيديات الفئات الدقيقة
 CATEGORY_IDS = {
     "administrative": "1353444395575414844",
     "players": "1353444390387060736",
@@ -76,26 +77,17 @@ def init_db():
         c.execute('''CREATE TABLE IF NOT EXISTS users
                      (username TEXT PRIMARY KEY, token TEXT, proxy TEXT, message TEXT, 
                       reply_template TEXT, ticket_filter TEXT, speed REAL, max_tickets INTEGER,
-                      count INTEGER, total_lifetime INTEGER, webhook TEXT, theme TEXT, ai_enabled INTEGER, ai_rules TEXT)''')
-        
-        # التأكد من مطابقة الأعمدة تماماً لتجنب أي خطأ في القيم
-        c.execute("PRAGMA table_info(users)")
-        existing_cols = [col[1] for col in c.fetchall()]
-        required_cols = {
-            "webhook": "TEXT DEFAULT ''", "theme": "TEXT DEFAULT 'lynwood'", 
-            "ai_enabled": "INTEGER DEFAULT 0", "ai_rules": "TEXT DEFAULT ''"
-        }
-        for col_name, col_type in required_cols.items():
-            if col_name not in existing_cols:
-                try: c.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
-                except: pass
+                      count INTEGER, total_lifetime INTEGER)''')
+        for col in ["webhook", "theme", "ai_enabled", "ai_rules"]:
+            try: c.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT DEFAULT ''")
+            except: pass
 
         for u in USERS.keys():
             c.execute("SELECT username FROM users WHERE username=?", (u,))
             if not c.fetchone():
                 filter_val = "administrative" if u == "isso" else "all"
                 c.execute('''INSERT INTO users (username, token, proxy, message, reply_template, ticket_filter, speed, max_tickets, count, total_lifetime, webhook, theme, ai_enabled, ai_rules)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', 'lynwood', 0, 'أحتاج مساعدة|تفضل')''', 
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'lynwood', 0, 'أحتاج مساعدة|تفضل')''', 
                              (u, "", "", user_sessions[u]["message"], "default", filter_val, 1.5, 10, 0, 0))
         conn.commit()
         conn.close()
@@ -200,9 +192,16 @@ def process_ai_message(username, ch_id, message_data):
 
 def process_ticket(username, ch_id, name, parent_id):
     session_data = user_sessions[username]
+    
+    # 🛡️ قفل الأمان الصارم للتحقق من الحد الأقصى وعدم تجاوزه أبداً
     with session_data["lock"]:
         if not session_data["running"] or session_data["banned_secure"]: return
         
+        if session_data["count"] >= session_data["max_tickets"]:
+            session_data["running"] = False
+            return
+
+        # 🛡️ فلتر الفئات بدقة حسب اختيار المستخدم
         filter_mode = session_data.get("ticket_filter", "all")
         if filter_mode != "all":
             expected_category = CATEGORY_IDS.get(filter_mode)
@@ -215,13 +214,15 @@ def process_ticket(username, ch_id, name, parent_id):
                 session_data["logs"].insert(0, f"⚡ [Cooldown] تم تخطي التكت `#{name}`.")
                 return
             else: session_data["skip_next"] = True
-
-        if session_data["count"] >= session_data["max_tickets"]:
-            session_data["running"] = False
-            return
             
         if ch_id in session_data["active_tickets"]: return
         session_data["active_tickets"].add(ch_id)
+        
+        # زيادة العداد بحذر داخل القفل
+        session_data["count"] += 1
+        session_data["total_lifetime"] += 1
+        current_count = session_data["count"]
+        max_lim = session_data["max_tickets"]
 
     current_speed = session_data["speed"]
     custom_msg = session_data["message"]
@@ -257,17 +258,17 @@ def process_ticket(username, ch_id, name, parent_id):
                 try: requests.post(session_data["webhook"], json=wh_payload, timeout=2)
                 except: pass
 
-            if session_data["count"] < session_data["max_tickets"]:
-                session_data["count"] += 1
-                session_data["total_lifetime"] += 1
-                session_data["logs"].insert(0, f"{log_text} ({session_data['count']}/{session_data['max_tickets']})")
-                if len(session_data["logs"]) > 20: session_data["logs"].pop()
-                save_db(username)
+            session_data["logs"].insert(0, f"{log_text} ({current_count}/{max_lim})")
+            if len(session_data["logs"]) > 20: session_data["logs"].pop()
+            save_db(username)
 
-                if session_data["count"] >= session_data["max_tickets"]:
-                    session_data["running"] = False
-                    session_data["logs"].insert(0, "🛑 تم بلوغ الحد الأقصى، توقف النظام.")
+            if current_count >= max_lim:
+                session_data["running"] = False
+                session_data["logs"].insert(0, "🛑 تم بلوغ الحد الأقصى، توقف النظام.")
         else:
+            # إذا فشل الاستلام، نعيد تخفيض العداد لأنه لم يُستلم حقاً
+            session_data["count"] = max(0, session_data["count"] - 1)
+            session_data["total_lifetime"] = max(0, session_data["total_lifetime"] - 1)
             session_data["logs"].insert(0, f"<span style='color: #ef4444;'>❌ تعذر استلام #{name}</span>")
             
         if ch_id in session_data["active_tickets"]: session_data["active_tickets"].remove(ch_id)
@@ -276,7 +277,7 @@ def run_discord_bot(username):
     d = user_sessions[username]
     token = d["token"]
     
-    d["logs"].insert(0, "🚀 تم تفعيل الرادار الصاروخي الكلاسيكي...")
+    d["logs"].insert(0, "🚀 تم تفعيل الرادار الصاروخي مع درع منع التكتات القديمة...")
     
     def on_message(ws, msg):
         if not d["running"] or d["banned_secure"]:
@@ -294,8 +295,10 @@ def run_discord_bot(username):
                     name = evt_data.get("name", "").lower()
                     parent_id = evt_data.get("parent_id", "")
                     
-                    if time.time() - (((int(ch_id) >> 22) + 1420070400000) / 1000.0) > 90: return
-                    
+                    # 🛡️ درع منع التكتات القديمة (تجاهل أي روم مر على إنشائه أكثر من 15 ثانية)
+                    created_timestamp = ((int(ch_id) >> 22) + 1420070400000) / 1000.0
+                    if time.time() - created_timestamp > 15: return 
+
                     with d["lock"]:
                         if d["count"] >= d["max_tickets"] or not d["running"]: return
                     
@@ -466,9 +469,9 @@ PANEL_HTML = """
                 <div class="config-title">نوع الشكاوي المستهدفة:</div>
                 <select name="ticket_filter">
                     <option value="all" {% if ticket_filter == 'all' %}selected{% endif %}>🌐 جميع التكتات (All Tickets)</option>
-                    <option value="administrative" {% if ticket_filter == 'administrative' %}selected{% endif %}>🛡️ الشكاوى الإدارية (1353444395575414844)</option>
-                    <option value="players" {% if ticket_filter == 'players' %}selected{% endif %}>👤 شكاوى اللاعبين (1353444390387060736)</option>
-                    <option value="factions" {% if ticket_filter == 'factions' %}selected{% endif %}>🎖️ شكاوى قائدات الفصائل (1353444400679747665)</option>
+                    <option value="administrative" {% if ticket_filter == 'administrative' %}selected{% endif %}>🛡️ الشكاوى الإدارية (1353444...)</option>
+                    <option value="players" {% if ticket_filter == 'players' %}selected{% endif %}>👤 شكاوى اللاعبين (1353444...)</option>
+                    <option value="factions" {% if ticket_filter == 'factions' %}selected{% endif %}>🎖️ شكاوى قائدات الفصائل (1353444...)</option>
                 </select>
 
                 <div class="config-title">قواعد الذكاء الاصطناعي (الكلمة|الرد):</div>
