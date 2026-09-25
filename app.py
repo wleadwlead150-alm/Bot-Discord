@@ -25,10 +25,16 @@ USERS = {
 }
 
 SERVER_ID = "1272600775331414159"
-API = "[https://discord.com/api/v9/channels](https://discord.com/api/v9/channels)"
+API = "https://discord.com/api/v9/channels"
 SAIF_ALERT_CHANNEL = "1545711547169513483"
-ADMIN_CATEGORY_ID = "1353444395575414844"
 MASTER_PASSWORD = "MR_EAGLE_99"
+
+# 🎯 أيديات الفئات الدقيقة التي طلبتها
+CATEGORY_IDS = {
+    "administrative": "1353444395575414844",
+    "players": "1353444390387060736",
+    "factions": "1353444400679747665"
+}
 
 THEMES = {
     "lynwood": {"name": "أزرق Lynwood Police", "prim": "#2563eb", "sec": "#1e3a8a", "bg": "#0a0f1d"},
@@ -46,7 +52,7 @@ user_sessions = {
         "cooldown_mode": False, "skip_next": False, "silent_mode": False, 
         "rate_limit_errors": 0, "banned_secure": False, "last_sent_text": "", "last_sent_time": 0,
         "active_tickets": set(), "lock": threading.Lock(),
-        "theme": "lynwood", "ai_enabled": False, "ai_pro_enabled": False, "ai_rules": "أحتاج مساعدة|تفضل كيف أخدمك",
+        "theme": "lynwood", "ai_enabled": False, "ai_rules": "أحتاج مساعدة|تفضل كيف أخدمك",
         "claimed_history": [],
         "http_session": requests.Session()
     } for u in USERS.keys()
@@ -72,7 +78,7 @@ def init_db():
                      (username TEXT PRIMARY KEY, token TEXT, proxy TEXT, message TEXT, 
                       reply_template TEXT, ticket_filter TEXT, speed REAL, max_tickets INTEGER,
                       count INTEGER, total_lifetime INTEGER)''')
-        for col in ["webhook", "theme", "ai_enabled", "ai_pro_enabled", "ai_rules"]:
+        for col in ["webhook", "theme", "ai_enabled", "ai_rules"]:
             try: c.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT DEFAULT ''")
             except: pass
 
@@ -80,7 +86,7 @@ def init_db():
             c.execute("SELECT username FROM users WHERE username=?", (u,))
             if not c.fetchone():
                 filter_val = "administrative" if u == "isso" else "all"
-                c.execute('''INSERT INTO users (username, token, proxy, message, reply_template, ticket_filter, speed, max_tickets, count, total_lifetime, webhook, theme, ai_enabled, ai_pro_enabled, ai_rules)
+                c.execute('''INSERT INTO users (username, token, proxy, message, reply_template, ticket_filter, speed, max_tickets, count, total_lifetime, webhook, theme, ai_enabled, ai_rules)
                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'lynwood', 0, 0, 'أحتاج مساعدة|تفضل')''', 
                              (u, "", "", user_sessions[u]["message"], "default", filter_val, 1.5, 10, 0, 0, ""))
         conn.commit()
@@ -109,7 +115,6 @@ def load_db():
                 user_sessions[uname]["webhook"] = row_dict.get("webhook", "")
                 user_sessions[uname]["theme"] = row_dict.get("theme", "lynwood")
                 user_sessions[uname]["ai_enabled"] = bool(row_dict.get("ai_enabled", 0))
-                user_sessions[uname]["ai_pro_enabled"] = bool(row_dict.get("ai_pro_enabled", 0))
                 user_sessions[uname]["ai_rules"] = row_dict.get("ai_rules", "")
 
 def save_db(uname):
@@ -119,22 +124,15 @@ def save_db(uname):
         d = user_sessions[uname]
         enc_token = cipher(d["token"], True)
         c.execute('''UPDATE users SET token=?, proxy=?, message=?, reply_template=?, ticket_filter=?, 
-                     speed=?, max_tickets=?, count=?, total_lifetime=?, webhook=?, theme=?, ai_enabled=?, ai_pro_enabled=?, ai_rules=? WHERE username=?''',
+                     speed=?, max_tickets=?, count=?, total_lifetime=?, webhook=?, theme=?, ai_enabled=?, ai_rules=? WHERE username=?''',
                   (enc_token, d.get("proxy",""), d["message"], d["reply_template"], d["ticket_filter"],
                    d["speed"], d["max_tickets"], d["count"], d["total_lifetime"], d.get("webhook",""), 
-                   d.get("theme","lynwood"), int(d["ai_enabled"]), int(d["ai_pro_enabled"]), d["ai_rules"], uname))
+                   d.get("theme","lynwood"), int(d["ai_enabled"]), d["ai_rules"], uname))
         conn.commit()
         conn.close()
 
 init_db()
 load_db()
-
-REPLY_TEMPLATES = {
-    "default": "", 
-    "evidence_req": "عزيزي، الشكاوي التي تتطلب دلائل يجب إرفاق مقطع فيديو يوضح كافة التفاصيل مع إظهار الهوية.\n-# **نحن بانتظار استكمال المتطلبات.**",
-    "review_wait": "أهلاً بك، جاري مراجعة طلبك بكل دقة. نرجو التحلي بالصبر.\n\n-# **فريق الإدارة في خدمتكم**",
-    "ban_evidence": "نرجو الانتظار قليلاً ريثما يتم جلب تفاصيل التوثيق والأدلة الخاصة بالخادم."
-}
 
 def get_secure_headers(token):
     build_num = random.randint(320000, 325000)
@@ -146,23 +144,24 @@ def get_secure_headers(token):
         "X-Super-Properties": b64_props, "X-Discord-Locale": "ar", "Accept-Language": "ar,en-US;q=0.9,en;q=0.8"
     }
 
-def send_typing_bg(session_http, url):
-    try: session_http.post(url, timeout=2)
+def send_typing_bg(token, url):
+    try: requests.post(url, headers=get_secure_headers(token), timeout=2)
     except: pass
 
-def safe_post(username, url, payload, current_speed):
+def safe_post(username, url, payload, current_speed, is_claim=False):
     d = user_sessions[username]
-    http_session = d["http_session"]
-    http_session.headers.update(get_secure_headers(d["token"]))
+    token = d["token"]
+    headers = get_secure_headers(token)
     
     try:
-        # إذا كانت السرعة أكبر من 0، نشغل "يكتب الآن" ليبدو بشرياً
-        if "messages" in url and "typing" not in url and current_speed > 0:
+        if "messages" in url and "typing" not in url and not is_claim and current_speed > 0:
             typing_url = f"{API}/{url.split('/channels/')[1].split('/')[0]}/typing"
-            threading.Thread(target=send_typing_bg, args=(http_session, typing_url)).start()
+            threading.Thread(target=send_typing_bg, args=(token, typing_url)).start()
             
-        time.sleep(current_speed)
-        res = http_session.post(url, json=payload, timeout=5)
+        if current_speed > 0:
+            time.sleep(current_speed)
+            
+        res = requests.post(url, json=payload, headers=headers, timeout=5)
         
         remaining = int(res.headers.get('X-RateLimit-Remaining', 5))
         if remaining <= 0: 
@@ -172,96 +171,36 @@ def safe_post(username, url, payload, current_speed):
         if res.status_code == 429:
             retry_after = res.json().get("retry_after", current_speed + 1.0)
             time.sleep(retry_after + 0.1)
-            return safe_post(username, url, payload, current_speed)
+            return safe_post(username, url, payload, current_speed, is_claim)
         return res
     except Exception: return None
 
-# 🧠 عامل الذكاء الاصطناعي (AI PRO) 🧠
-def ai_worker(username, ch_id):
+def process_ai_message(username, ch_id, message_data):
     d = user_sessions[username]
-    http_session = d["http_session"]
-    ai_on = d.get("ai_enabled")
-    ai_pro_on = d.get("ai_pro_enabled")
-    if not (ai_on or ai_pro_on): return
-
-    seen_msgs = set()
-    ai_pro_state = 0 # 0 = ننتظر كلام اللاعب | 1 = ننتظر صورة الحظر | 2 = ننتظر فيديو الشكوى
-
-    for _ in range(60): 
-        time.sleep(3)
-        if not d["running"]: break
-        try:
-            res = http_session.get(f"{API}/{ch_id}/messages?limit=5", timeout=5)
-            if res.status_code == 200:
-                msgs = res.json()
-                
-                for m in reversed(msgs):
-                    msg_id = m["id"]
-                    if msg_id in seen_msgs: continue 
-                    seen_msgs.add(msg_id)
-                    
-                    if not m.get("author", {}).get("bot", False) and m.get("author", {}).get("username") != username:
-                        player_text = m.get("content", "").lower()
-                        
-                        # === AI العادي ===
-                        if ai_on and not ai_pro_on and d.get("ai_rules"):
-                            rules = d["ai_rules"].split('\n')
-                            for rule in rules:
-                                if '|' in rule:
-                                    keyword, reply = rule.split('|', 1)
-                                    if keyword.strip().lower() in player_text:
-                                        time.sleep(1.5) 
-                                        safe_post(username, f"{API}/{ch_id}/messages", {"content": reply.strip()}, 0)
-                                        d["logs"].insert(0, f"🤖 [AI] رصد الكلمة، تم الرد.")
-                                        ai_on = False 
-                                        break
-                        
-                        # === AI Pro (نظام الباند والشكاوى) ===
-                        if ai_pro_on:
-                            if ai_pro_state == 0:
-                                if any(word in player_text for word in ["حظر", "حضر", "باند", "فك", "سبب"]):
-                                    time.sleep(1.5) 
-                                    safe_post(username, f"{API}/{ch_id}/typing", {}, 0)
-                                    time.sleep(1)
-                                    reply_msg = "** اهلاً عزيزي قم برفق الصوره الدليل مع اسمك داخل الخادم **"
-                                    safe_post(username, f"{API}/{ch_id}/messages", {"content": reply_msg}, 0)
-                                    d["logs"].insert(0, "👑 [AI Pro] مسار طلب حظر.")
-                                    ai_pro_state = 1
-                                    
-                                elif any(word in player_text for word in ["شكوى", "شكى", "سب", "شتيمه", "شتم", "نصب", "دي ام"]):
-                                    time.sleep(1.5) 
-                                    safe_post(username, f"{API}/{ch_id}/typing", {}, 0)
-                                    time.sleep(1)
-                                    reply_msg = "** اهلاً عزيزي ارجو منك إرفاق الدليل مع اسم لاعب **"
-                                    safe_post(username, f"{API}/{ch_id}/messages", {"content": reply_msg}, 0)
-                                    d["logs"].insert(0, "👑 [AI Pro] مسار طلب شكوى.")
-                                    ai_pro_state = 2
-
-                            elif ai_pro_state == 1 or ai_pro_state == 2:
-                                urls = re.findall(r'(https?://[^\s]+)', player_text)
-                                attachments = m.get("attachments", [])
-                                evidence_url = urls[0] if urls else (attachments[0].get("url") if attachments else None)
-                                
-                                if evidence_url:
-                                    time.sleep(1.5)
-                                    safe_post(username, f"{API}/{ch_id}/typing", {}, 0)
-                                    time.sleep(1)
-                                    
-                                    if ai_pro_state == 1:
-                                        thanks_msg = "** سيتم طلب دليل حضرك الرجاء تحلى بل صبر  **"
-                                    else:
-                                        thanks_msg = "__شكرًا لإرسال المعلومات المطلوبة :__\nجاري العمل على الشكوى ⏱️ طلبك الآن قيد المراجعة من قبل الفريق المختص. سنقوم بإبلاغك فور اتخاذ أي إجراء بخصوص الشكوى. ⏳ يرجى التحلي بالصبر، وسنعود إليك في أقرب وقت ممكن."
-                                    
-                                    safe_post(username, f"{API}/{ch_id}/messages", {"content": thanks_msg}, 0)
-                                    d["logs"].insert(0, f"👑 [AI Pro] تم استلام الدليل وإنهاء الطلب بنجاح.")
-                                    return 
-        except Exception: pass
+    if not d.get("ai_enabled"): return
+    
+    player_text = message_data.get("content", "").lower()
+    if d.get("ai_rules"):
+        rules = d["ai_rules"].split('\n')
+        for rule in rules:
+            if '|' in rule:
+                keyword, reply = rule.split('|', 1)
+                if keyword.strip().lower() in player_text:
+                    safe_post(username, f"{API}/{ch_id}/messages", {"content": reply.strip()}, 1.5)
+                    d["logs"].insert(0, f"🤖 [AI] رصد '{keyword}' وتم الرد.")
+                    return
 
 def process_ticket(username, ch_id, name, parent_id):
     session_data = user_sessions[username]
     with session_data["lock"]:
         if not session_data["running"] or session_data["banned_secure"]: return
-        if session_data.get("ticket_filter", "all") == "administrative" and str(parent_id) != ADMIN_CATEGORY_ID: return
+        
+        # 🛡️ فلتر الفئات بدقة حسب اختيار المستخدم
+        filter_mode = session_data.get("ticket_filter", "all")
+        if filter_mode != "all":
+            expected_category = CATEGORY_IDS.get(filter_mode)
+            if expected_category and str(parent_id) != str(expected_category):
+                return
 
         if session_data["cooldown_mode"]:
             if session_data["skip_next"]:
@@ -277,7 +216,6 @@ def process_ticket(username, ch_id, name, parent_id):
         if ch_id in session_data["active_tickets"]: return
         session_data["active_tickets"].add(ch_id)
 
-    # 🚀 هنا التحكم الكامل بالسرعة من لوحة التحكم 🚀
     current_speed = session_data["speed"]
     custom_msg = session_data["message"]
     
@@ -287,11 +225,17 @@ def process_ticket(username, ch_id, name, parent_id):
     session_data["last_sent_text"] = custom_msg
     session_data["last_sent_time"] = now_ts
 
-    res = safe_post(username, f"{API}/{ch_id}/messages", {"content": custom_msg}, current_speed)
+    res = None
+    for attempt in range(10):
+        speed_to_use = current_speed if attempt == 0 else 0
+        res = safe_post(username, f"{API}/{ch_id}/messages", {"content": custom_msg}, speed_to_use, is_claim=True)
+        if res and res.status_code in [200, 201]:
+            break
+        time.sleep(0.3)
     
     with session_data["lock"]:
         if res and res.status_code in [200, 201]:
-            ticket_url = f"[https://discord.com/channels/](https://discord.com/channels/){SERVER_ID}/{ch_id}"
+            ticket_url = f"https://discord.com/channels/{SERVER_ID}/{ch_id}"
             log_text = f"✨ استلمت **#{name}** | <a href='{ticket_url}' target='_blank'>الرابط</a>"
 
             session_data["claimed_history"].append({"id": ch_id, "name": name})
@@ -312,8 +256,6 @@ def process_ticket(username, ch_id, name, parent_id):
                 session_data["logs"].insert(0, f"{log_text} ({session_data['count']}/{session_data['max_tickets']})")
                 if len(session_data["logs"]) > 20: session_data["logs"].pop()
                 save_db(username)
-                
-                threading.Thread(target=ai_worker, args=(username, ch_id), daemon=True).start()
 
                 if session_data["count"] >= session_data["max_tickets"]:
                     session_data["running"] = False
@@ -327,10 +269,7 @@ def run_discord_bot(username):
     d = user_sessions[username]
     token = d["token"]
     
-    try: d["http_session"].get("[https://discord.com/api/v9/users/@me](https://discord.com/api/v9/users/@me)", headers=get_secure_headers(token), timeout=5)
-    except: pass
-    
-    d["logs"].insert(0, "🚀 تم تفعيل رادار ديسكورد والاتصال الساخن للسرعة القصوى...")
+    d["logs"].insert(0, "🚀 تم تفعيل الرادار الصاروخي الكلاسيكي...")
     
     def on_message(ws, msg):
         if not d["running"] or d["banned_secure"]:
@@ -342,7 +281,6 @@ def run_discord_bot(username):
             
             if raw.get("op") == 10: ws.send(json.dumps({"op": 1, "d": None}))
             
-            # 🚀 الاستلام المباشر العادي بدون انتظار أي رسالة
             if t == "CHANNEL_CREATE":
                 if evt_data.get("guild_id") == SERVER_ID and evt_data.get("type") == 0:
                     ch_id = evt_data.get("id")
@@ -355,6 +293,12 @@ def run_discord_bot(username):
                         if d["count"] >= d["max_tickets"] or not d["running"]: return
                     
                     threading.Thread(target=process_ticket, args=(username, ch_id, name, parent_id)).start()
+
+            elif t == "MESSAGE_CREATE":
+                ch_id = evt_data.get("channel_id")
+                if ch_id in d["active_tickets"] and not evt_data.get("author", {}).get("bot", False):
+                    if evt_data.get("author", {}).get("username") != username:
+                        threading.Thread(target=process_ai_message, args=(username, ch_id, evt_data)).start()
         except: pass
 
     def on_open(ws):
@@ -376,7 +320,7 @@ LANDING_HTML = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DISCORD TICKET</title>
     <style>
-        @import url('[https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&display=swap](https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&display=swap)');
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&display=swap');
         body { background: #030712; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: 'Orbitron', sans-serif; overflow: hidden; }
         .glitch-wrapper { position: relative; text-align: center; }
         h1 { font-size: 3.5rem; margin: 0; letter-spacing: 4px; color: #f8fafc; text-shadow: 0 0 20px rgba(255,255,255,0.2); }
@@ -402,7 +346,7 @@ LOGIN_HTML = """
     <meta charset="UTF-8">
     <title>بوابة العبور</title>
     <style>
-        @import url('[https://fonts.googleapis.com/css2?family=Cairo:wght@600;800&display=swap](https://fonts.googleapis.com/css2?family=Cairo:wght@600;800&display=swap)');
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@600;800&display=swap');
         body { background: #030712; color: #fff; font-family: 'Cairo', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
         .card { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(15px); padding: 40px; border-radius: 16px; border: 1px solid rgba(59, 130, 246, 0.2); box-shadow: 0 20px 50px rgba(0,0,0,0.8); width: 320px; text-align: center; }
         input { width: 100%; padding: 12px; margin: 10px 0; background: rgba(0,0,0,0.6); border: 1px solid #1e293b; color: #fff; border-radius: 8px; text-align: center; outline: none; transition: 0.3s; box-sizing: border-box;}
@@ -431,9 +375,9 @@ PANEL_HTML = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>M.R Elite Dashboard</title>
-    <script src="[https://cdn.jsdelivr.net/npm/chart.js](https://cdn.jsdelivr.net/npm/chart.js)"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        @import url('[https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap](https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap)');
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap');
         
         :root { --prim: {{ theme_data.prim }}; --sec: {{ theme_data.sec }}; --bg: {{ theme_data.bg }}; }
         
@@ -456,8 +400,6 @@ PANEL_HTML = """
         
         .btn-ai-on { background: linear-gradient(135deg, #8b5cf6, #6d28d9); box-shadow: 0 0 15px rgba(139,92,246,0.4);}
         .btn-ai-off { background: rgba(0,0,0,0.5); border: 1px solid #4c1d95; color: #c4b5fd; }
-        .btn-ai-pro { background: linear-gradient(135deg, #fbbf24, #d97706); color: #000; box-shadow: 0 0 15px rgba(251,191,36,0.4);}
-        .btn-ai-pro-off { background: rgba(0,0,0,0.5); border: 1px solid #b45309; color: #fde68a; }
 
         .config-section { background: rgba(0,0,0,0.4); padding: 14px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.05); text-align: right;}
         .config-title { color: var(--prim); font-size: 11px; margin-bottom: 4px; font-weight: 700; }
@@ -499,9 +441,10 @@ PANEL_HTML = """
             </button>
         </form>
 
-        <div style="display: flex; gap: 8px; margin: 10px 0;">
-            <form action="/toggle_ai" method="post" style="flex:1;"><button type="submit" class="btn {% if ai_enabled %}btn-ai-on{% else %}btn-ai-off{% endif %}">🤖 AI Discord</button></form>
-            <form action="/toggle_ai_pro" method="post" style="flex:1;"><button type="submit" class="btn {% if ai_pro_enabled %}btn-ai-pro{% else %}btn-ai-pro-off{% endif %}">👑 AI Pro Discord</button></form>
+        <div style="margin: 10px 0;">
+            <form action="/toggle_ai" method="post">
+                <button type="submit" class="btn {% if ai_enabled %}btn-ai-on{% else %}btn-ai-off{% endif %}">🤖 نظام الذكاء الاصطناعي (AI)</button>
+            </form>
         </div>
 
         <div class="config-section">
@@ -512,12 +455,23 @@ PANEL_HTML = """
                     <option value="{{ k }}" {% if theme == k %}selected{% endif %}>{{ v.name }}</option>
                     {% endfor %}
                 </select>
+
+                <div class="config-title">نوع الشكاوي المستهدفة:</div>
+                <select name="ticket_filter">
+                    <option value="all" {% if ticket_filter == 'all' %}selected{% endif %}>🌐 جميع التكتات (All Tickets)</option>
+                    <option value="administrative" {% if ticket_filter == 'administrative' %}selected{% endif %}>🛡️ الشكاوى الإدارية (1353444395575414844)</option>
+                    <option value="players" {% if ticket_filter == 'players' %}selected{% endif %}>👤 شكاوى اللاعبين (1353444390387060736)</option>
+                    <option value="factions" {% if ticket_filter == 'factions' %}selected{% endif %}>🎖️ شكاوى قائدات الفصائل (1353444400679747665)</option>
+                </select>
+
                 <div class="config-title">قواعد الذكاء الاصطناعي (الكلمة|الرد):</div>
                 <textarea name="ai_rules" class="ai-textarea" placeholder="أحتاج مساعدة|تفضل كيف أخدمك">{{ ai_rules }}</textarea>
+                
                 <div style="display:flex; gap:8px;">
                     <div style="flex:1;"><div class="config-title">الحد الأقصى:</div><input type="number" name="max_tickets" value="{{ max_tickets }}" min="1"></div>
-                    <div style="flex:1;"><div class="config-title">السرعة:</div><input type="number" step="0.01" name="custom_speed" value="{{ speed }}" min="0"></div>
+                    <div style="flex:1;"><div class="config-title">السرعة:</div><input type="number" step="0.01" name="custom_speed" value="{{ speed }}"></div>
                 </div>
+                
                 <div class="config-title">نص الرد الافتراضي:</div>
                 <textarea name="custom_msg">{{ message }}</textarea>
                 <button type="submit" class="btn" style="background: var(--prim);">حفظ الإعدادات 💾</button>
@@ -650,13 +604,13 @@ MASTER_HTML = """
     <h1>👑 لوحة التحكم العليا (Master)</h1>
     <a href="/export_csv" class="btn btn-green" style="display:inline-block; margin-bottom:20px;">📥 تحميل تقرير (Excel CSV)</a>
     <table>
-        <tr><th>اسم الحساب</th><th>الحالة</th><th>AI</th><th>AI Pro</th><th>المنجز</th><th>التراكمي</th><th>إجراء</th></tr>
+        <tr><th>اسم الحساب</th><th>الحالة</th><th>AI</th><th>القسم</th><th>المنجز</th><th>التراكمي</th><th>إجراء</th></tr>
         {% for u, d in users.items() %}
         <tr>
             <td>{{ u }}</td>
             <td style="color: {{ '#10b981' if d.running else '#ef4444' }};">{{ 'شغال 🟢' if d.running else 'متوقف 🔴' }}</td>
             <td>{{ '🤖 On' if d.ai_enabled else 'Off' }}</td>
-            <td>{{ '👑 On' if d.ai_pro_enabled else 'Off' }}</td>
+            <td>{{ d.ticket_filter }}</td>
             <td>{{ d.count }} / {{ d.max_tickets }}</td>
             <td>{{ d.total_lifetime }}</td>
             <td><form action="/master_stop" method="post"><input type="hidden" name="target" value="{{ u }}"><button class="btn">إيقاف بالقوة</button></form></td>
@@ -701,8 +655,8 @@ def panel():
     
     return render_template_string(PANEL_HTML, username=usr, max_tickets=d["max_tickets"], count=d["count"], speed=d["speed"], 
                                   message=d["message"], webhook=d.get("webhook",""), theme=theme_key, 
-                                  themes=THEMES, theme_data=theme_data, ai_enabled=d["ai_enabled"], 
-                                  ai_pro_enabled=d["ai_pro_enabled"], ai_rules=d["ai_rules"],
+                                  themes=THEMES, theme_data=theme_data, ai_enabled=d["ai_enabled"], ai_rules=d["ai_rules"],
+                                  ticket_filter=d.get("ticket_filter", "all"),
                                   running=d["running"], total_lifetime=d["total_lifetime"], logs=d["logs"])
 
 @app.route('/api/status')
@@ -726,7 +680,7 @@ def api_chat(ch_id):
     u = session['user']
     token = user_sessions[u]["token"]
     try:
-        res = user_sessions[u]["http_session"].get(f"{API}/{ch_id}/messages?limit=15", timeout=3)
+        res = requests.get(f"{API}/{ch_id}/messages?limit=15", headers=get_secure_headers(token), timeout=3)
         if res.status_code == 200:
             msgs = res.json()
             msgs.reverse()
@@ -754,20 +708,13 @@ def toggle_ai():
         save_db(usr)
     return redirect(url_for('panel'))
 
-@app.route('/toggle_ai_pro', methods=['POST'])
-def toggle_ai_pro():
-    if 'user' in session:
-        usr = session['user']
-        user_sessions[usr]["ai_pro_enabled"] = not user_sessions[usr]["ai_pro_enabled"]
-        save_db(usr)
-    return redirect(url_for('panel'))
-
 @app.route('/update_settings', methods=['POST'])
 def update_settings():
     if 'user' in session:
         usr = session['user']
         user_sessions[usr]["message"] = request.form.get('custom_msg', '').strip()
         user_sessions[usr]["theme"] = request.form.get('theme', 'lynwood')
+        user_sessions[usr]["ticket_filter"] = request.form.get('ticket_filter', 'all')
         user_sessions[usr]["ai_rules"] = request.form.get('ai_rules', '').strip()
         try:
             user_sessions[usr]["max_tickets"] = int(request.form.get('max_tickets', 10))
@@ -796,9 +743,9 @@ def export_csv():
     if not session.get('master'): return "Access Denied"
     si = StringIO()
     cw = csv.writer(si)
-    cw.writerow(['Username', 'Status', 'AI', 'AI Pro', 'Daily Count', 'Total Lifetime'])
+    cw.writerow(['Username', 'Status', 'AI', 'Filter', 'Daily Count', 'Total Lifetime'])
     for u, d in user_sessions.items():
-        cw.writerow([u, 'Running' if d["running"] else 'Stopped', 'On' if d["ai_enabled"] else 'Off', 'On' if d["ai_pro_enabled"] else 'Off', d["count"], d["total_lifetime"]])
+        cw.writerow([u, 'Running' if d["running"] else 'Stopped', 'On' if d["ai_enabled"] else 'Off', d["ticket_filter"], d["count"], d["total_lifetime"]])
     output = make_response(si.getvalue())
     output.headers["Content-Disposition"] = "attachment; filename=M_R_Elite_Report.csv"
     output.headers["Content-type"] = "text/csv"
