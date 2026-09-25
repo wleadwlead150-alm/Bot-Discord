@@ -29,7 +29,6 @@ API = "https://discord.com/api/v9/channels"
 SAIF_ALERT_CHANNEL = "1545711547169513483"
 MASTER_PASSWORD = "MR_EAGLE_99"
 
-# 🎯 أيديات الفئات الدقيقة التي طلبتها
 CATEGORY_IDS = {
     "administrative": "1353444395575414844",
     "players": "1353444390387060736",
@@ -77,18 +76,27 @@ def init_db():
         c.execute('''CREATE TABLE IF NOT EXISTS users
                      (username TEXT PRIMARY KEY, token TEXT, proxy TEXT, message TEXT, 
                       reply_template TEXT, ticket_filter TEXT, speed REAL, max_tickets INTEGER,
-                      count INTEGER, total_lifetime INTEGER)''')
-        for col in ["webhook", "theme", "ai_enabled", "ai_rules"]:
-            try: c.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT DEFAULT ''")
-            except: pass
+                      count INTEGER, total_lifetime INTEGER, webhook TEXT, theme TEXT, ai_enabled INTEGER, ai_rules TEXT)''')
+        
+        # التأكد من مطابقة الأعمدة تماماً لتجنب أي خطأ في القيم
+        c.execute("PRAGMA table_info(users)")
+        existing_cols = [col[1] for col in c.fetchall()]
+        required_cols = {
+            "webhook": "TEXT DEFAULT ''", "theme": "TEXT DEFAULT 'lynwood'", 
+            "ai_enabled": "INTEGER DEFAULT 0", "ai_rules": "TEXT DEFAULT ''"
+        }
+        for col_name, col_type in required_cols.items():
+            if col_name not in existing_cols:
+                try: c.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
+                except: pass
 
         for u in USERS.keys():
             c.execute("SELECT username FROM users WHERE username=?", (u,))
             if not c.fetchone():
                 filter_val = "administrative" if u == "isso" else "all"
                 c.execute('''INSERT INTO users (username, token, proxy, message, reply_template, ticket_filter, speed, max_tickets, count, total_lifetime, webhook, theme, ai_enabled, ai_rules)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'lynwood', 0, 0, 'أحتاج مساعدة|تفضل')''', 
-                             (u, "", "", user_sessions[u]["message"], "default", filter_val, 1.5, 10, 0, 0, ""))
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', 'lynwood', 0, 'أحتاج مساعدة|تفضل')''', 
+                             (u, "", "", user_sessions[u]["message"], "default", filter_val, 1.5, 10, 0, 0))
         conn.commit()
         conn.close()
 
@@ -195,7 +203,6 @@ def process_ticket(username, ch_id, name, parent_id):
     with session_data["lock"]:
         if not session_data["running"] or session_data["banned_secure"]: return
         
-        # 🛡️ فلتر الفئات بدقة حسب اختيار المستخدم
         filter_mode = session_data.get("ticket_filter", "all")
         if filter_mode != "all":
             expected_category = CATEGORY_IDS.get(filter_mode)
