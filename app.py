@@ -25,12 +25,10 @@ USERS = {
 }
 
 SERVER_ID = "1272600775331414159"
-API = "https://discord.com/api/v9/channels"
+API = "[https://discord.com/api/v9/channels](https://discord.com/api/v9/channels)"
 SAIF_ALERT_CHANNEL = "1545711547169513483"
 ADMIN_CATEGORY_ID = "1353444395575414844"
 MASTER_PASSWORD = "MR_EAGLE_99"
-
-KNOWN_SERVERS = ["lynwood", "santa cruz", "bell", "glendale", "covina", "hills", "chico", "napa", "mesa"]
 
 THEMES = {
     "lynwood": {"name": "أزرق Lynwood Police", "prim": "#2563eb", "sec": "#1e3a8a", "bg": "#0a0f1d"},
@@ -50,7 +48,7 @@ user_sessions = {
         "active_tickets": set(), "lock": threading.Lock(),
         "theme": "lynwood", "ai_enabled": False, "ai_pro_enabled": False, "ai_rules": "أحتاج مساعدة|تفضل كيف أخدمك",
         "claimed_history": [],
-        "ai_tracking": {}
+        "http_session": requests.Session()
     } for u in USERS.keys()
 }
 
@@ -131,6 +129,13 @@ def save_db(uname):
 init_db()
 load_db()
 
+REPLY_TEMPLATES = {
+    "default": "", 
+    "evidence_req": "عزيزي، الشكاوي التي تتطلب دلائل يجب إرفاق مقطع فيديو يوضح كافة التفاصيل مع إظهار الهوية.\n-# **نحن بانتظار استكمال المتطلبات.**",
+    "review_wait": "أهلاً بك، جاري مراجعة طلبك بكل دقة. نرجو التحلي بالصبر.\n\n-# **فريق الإدارة في خدمتكم**",
+    "ban_evidence": "نرجو الانتظار قليلاً ريثما يتم جلب تفاصيل التوثيق والأدلة الخاصة بالخادم."
+}
+
 def get_secure_headers(token):
     build_num = random.randint(320000, 325000)
     props = {"os": "iOS", "browser": "Discord Client", "device": "iPhone 13, pro, max", "system_version": "17.5", "client_build_number": build_num, "client_version": "241.0"}
@@ -141,24 +146,23 @@ def get_secure_headers(token):
         "X-Super-Properties": b64_props, "X-Discord-Locale": "ar", "Accept-Language": "ar,en-US;q=0.9,en;q=0.8"
     }
 
-def send_typing_bg(token, url):
-    try: requests.post(url, headers=get_secure_headers(token), timeout=2)
+def send_typing_bg(session_http, url):
+    try: session_http.post(url, timeout=2)
     except: pass
 
-def safe_post(username, url, payload, current_speed, is_claim=False):
+def safe_post(username, url, payload, current_speed):
     d = user_sessions[username]
-    token = d["token"]
-    headers = get_secure_headers(token)
+    http_session = d["http_session"]
+    http_session.headers.update(get_secure_headers(d["token"]))
     
     try:
-        if "messages" in url and "typing" not in url and not is_claim and current_speed > 0:
+        # إذا كانت السرعة أكبر من 0، نشغل "يكتب الآن" ليبدو بشرياً
+        if "messages" in url and "typing" not in url and current_speed > 0:
             typing_url = f"{API}/{url.split('/channels/')[1].split('/')[0]}/typing"
-            threading.Thread(target=send_typing_bg, args=(token, typing_url)).start()
+            threading.Thread(target=send_typing_bg, args=(http_session, typing_url)).start()
             
-        if current_speed > 0:
-            time.sleep(current_speed)
-            
-        res = requests.post(url, json=payload, headers=headers, timeout=5)
+        time.sleep(current_speed)
+        res = http_session.post(url, json=payload, timeout=5)
         
         remaining = int(res.headers.get('X-RateLimit-Remaining', 5))
         if remaining <= 0: 
@@ -168,153 +172,90 @@ def safe_post(username, url, payload, current_speed, is_claim=False):
         if res.status_code == 429:
             retry_after = res.json().get("retry_after", current_speed + 1.0)
             time.sleep(retry_after + 0.1)
-            return safe_post(username, url, payload, current_speed, is_claim)
+            return safe_post(username, url, payload, current_speed)
         return res
     except Exception: return None
 
-def find_target_channel(token, server_name):
-    if not server_name or server_name == "default": return None
-    try:
-        res = requests.get(f"https://discord.com/api/v9/guilds/{SERVER_ID}/channels", headers=get_secure_headers(token), timeout=5)
-        if res.status_code == 200:
-            channels = res.json()
-            search_key = server_name.lower().replace(" ", "-")
-            target_id = None
-            
-            for c in channels:
-                c_name = c.get("name", "").lower()
-                if c.get("type") == 0 and "طلبات" in c_name and search_key in c_name:
-                    target_id = c["id"]
-                    break
-            
-            if not target_id:
-                for c in channels:
-                    c_name = c.get("name", "").lower()
-                    if c.get("type") == 0 and "شات" in c_name and search_key in c_name:
-                        target_id = c["id"]
-                        break
-            return target_id
-    except: pass
-    return None
-
-def setup_ai_tracking(username, ch_id, ticket_name):
+# 🧠 عامل الذكاء الاصطناعي (AI PRO) 🧠
+def ai_worker(username, ch_id):
     d = user_sessions[username]
-    token = d["token"]
-    
-    server_name = "default"
-    player_name = "غير معروف"
-    ticket_number = re.sub(r'\D', '', ticket_name)
-    if not ticket_number: ticket_number = ticket_name
-
-    for _ in range(5):
-        try:
-            res = requests.get(f"{API}/{ch_id}/messages?limit=5", headers=get_secure_headers(token), timeout=2)
-            if res.status_code == 200:
-                msgs = res.json()
-                for m in msgs:
-                    if m.get("author", {}).get("bot", False):
-                        content = m.get("content", "").lower()
-                        embeds = str(m.get("embeds", [])).lower()
-                        
-                        for srv in KNOWN_SERVERS:
-                            if srv in embeds or srv in content:
-                                server_name = srv
-                                break
-                        mentions = m.get("mentions", [])
-                        if mentions: player_name = mentions[0].get("username", "غير معروف")
-                
-                if player_name != "غير معروف": break
-        except: pass
-        time.sleep(1)
-
-    d["ai_tracking"][ch_id] = {
-        "state": 0, 
-        "server_name": server_name,
-        "player_name": player_name,
-        "ticket_number": ticket_number,
-        "active": True
-    }
-    if len(d["ai_tracking"]) > 20: 
-        oldest_key = list(d["ai_tracking"].keys())[0]
-        del d["ai_tracking"][oldest_key]
-
-def process_ai_message(username, ch_id, message_data):
-    d = user_sessions[username]
+    http_session = d["http_session"]
     ai_on = d.get("ai_enabled")
     ai_pro_on = d.get("ai_pro_enabled")
-    
-    if not (ai_on or ai_pro_on) or ch_id not in d.get("ai_tracking", {}): return
-    
-    tracking = d["ai_tracking"][ch_id]
-    if not tracking["active"]: return
+    if not (ai_on or ai_pro_on): return
 
-    player_text = message_data.get("content", "").lower()
-    
-    if ai_on and not ai_pro_on and d.get("ai_rules"):
-        rules = d["ai_rules"].split('\n')
-        for rule in rules:
-            if '|' in rule:
-                keyword, reply = rule.split('|', 1)
-                if keyword.strip().lower() in player_text:
-                    safe_post(username, f"{API}/{ch_id}/messages", {"content": reply.strip()}, 1.5)
-                    d["logs"].insert(0, f"🤖 [AI] رصد '{keyword}' وتم الرد.")
-                    tracking["active"] = False
-                    return
+    seen_msgs = set()
+    ai_pro_state = 0 # 0 = ننتظر كلام اللاعب | 1 = ننتظر صورة الحظر | 2 = ننتظر فيديو الشكوى
 
-    if ai_pro_on:
-        state = tracking["state"]
-        srv = tracking["server_name"]
-        p_name = tracking["player_name"]
-        t_num = tracking["ticket_number"]
-
-        if state == 0:
-            if any(word in player_text for word in ["حظر", "حضر", "باند", "فك"]):
-                safe_post(username, f"{API}/{ch_id}/typing", {}, 0)
-                time.sleep(1.5)
-                reply_msg = "** اهلاً عزيزي قم برفق الصوره الدليل مع اسمك داخل الخادم **"
-                safe_post(username, f"{API}/{ch_id}/messages", {"content": reply_msg}, 0)
-                d["logs"].insert(0, "👑 [AI Pro] مسار (دليل حظر).")
-                tracking["state"] = 1
-                return
-            
-            elif any(word in player_text for word in ["شكوى", "شكى", "سب", "شتيمه", "شتم", "نصب", "دي ام"]):
-                safe_post(username, f"{API}/{ch_id}/typing", {}, 0)
-                time.sleep(1.5)
-                reply_msg = "** اهلاً عزيزي ارجو منك إرفاق الدليل مع اسم لاعب **"
-                safe_post(username, f"{API}/{ch_id}/messages", {"content": reply_msg}, 0)
-                d["logs"].insert(0, "👑 [AI Pro] مسار (شكوى).")
-                tracking["state"] = 2
-                return
-
-        elif state == 1 or state == 2:
-            urls = re.findall(r'(https?://[^\s]+)', player_text)
-            attachments = message_data.get("attachments", [])
-            evidence_url = urls[0] if urls else (attachments[0].get("url") if attachments else None)
-            
-            if evidence_url:
-                safe_post(username, f"{API}/{ch_id}/typing", {}, 0)
-                time.sleep(1.5)
+    for _ in range(60): 
+        time.sleep(3)
+        if not d["running"]: break
+        try:
+            res = http_session.get(f"{API}/{ch_id}/messages?limit=5", timeout=5)
+            if res.status_code == 200:
+                msgs = res.json()
                 
-                if state == 1:
-                    thanks_msg = "** سيتم طلب دليل حضرك الرجاء تحلى بل صبر  **"
-                else:
-                    thanks_msg = "__شكرًا لإرسال المعلومات المطلوبة :__\nجاري العمل على الشكوى ⏱️ طلبك الآن قيد المراجعة من قبل الفريق المختص. سنقوم بإبلاغك فور اتخاذ أي إجراء بخصوص الشكوى. ⏳ يرجى التحلي بالصبر، وسنعود إليك في أقرب وقت ممكن."
-                
-                safe_post(username, f"{API}/{ch_id}/messages", {"content": thanks_msg}, 0)
-                
-                target_channel_id = find_target_channel(d["token"], srv)
-                if target_channel_id:
-                    if state == 1:
-                        report_msg = f"** اهلاً ممكن دليل حضر لاعب {p_name} رقم التذكره {t_num} **\n{evidence_url}"
-                    else:
-                        report_msg = f"**\nرقم التذكره : {t_num}\nاسم لاعب : {p_name}\n**\n{evidence_url}"
+                for m in reversed(msgs):
+                    msg_id = m["id"]
+                    if msg_id in seen_msgs: continue 
+                    seen_msgs.add(msg_id)
                     
-                    safe_post(username, f"{API}/{target_channel_id}/messages", {"content": report_msg}, 0)
-                    d["logs"].insert(0, f"👑 [AI Pro] رفع التقرير إلى {srv}.")
-                else:
-                    d["logs"].insert(0, f"⚠️ [AI Pro] لم يعثر على روم لسيرفر {srv}.")
-                
-                tracking["active"] = False
+                    if not m.get("author", {}).get("bot", False) and m.get("author", {}).get("username") != username:
+                        player_text = m.get("content", "").lower()
+                        
+                        # === AI العادي ===
+                        if ai_on and not ai_pro_on and d.get("ai_rules"):
+                            rules = d["ai_rules"].split('\n')
+                            for rule in rules:
+                                if '|' in rule:
+                                    keyword, reply = rule.split('|', 1)
+                                    if keyword.strip().lower() in player_text:
+                                        time.sleep(1.5) 
+                                        safe_post(username, f"{API}/{ch_id}/messages", {"content": reply.strip()}, 0)
+                                        d["logs"].insert(0, f"🤖 [AI] رصد الكلمة، تم الرد.")
+                                        ai_on = False 
+                                        break
+                        
+                        # === AI Pro (نظام الباند والشكاوى) ===
+                        if ai_pro_on:
+                            if ai_pro_state == 0:
+                                if any(word in player_text for word in ["حظر", "حضر", "باند", "فك", "سبب"]):
+                                    time.sleep(1.5) 
+                                    safe_post(username, f"{API}/{ch_id}/typing", {}, 0)
+                                    time.sleep(1)
+                                    reply_msg = "** اهلاً عزيزي قم برفق الصوره الدليل مع اسمك داخل الخادم **"
+                                    safe_post(username, f"{API}/{ch_id}/messages", {"content": reply_msg}, 0)
+                                    d["logs"].insert(0, "👑 [AI Pro] مسار طلب حظر.")
+                                    ai_pro_state = 1
+                                    
+                                elif any(word in player_text for word in ["شكوى", "شكى", "سب", "شتيمه", "شتم", "نصب", "دي ام"]):
+                                    time.sleep(1.5) 
+                                    safe_post(username, f"{API}/{ch_id}/typing", {}, 0)
+                                    time.sleep(1)
+                                    reply_msg = "** اهلاً عزيزي ارجو منك إرفاق الدليل مع اسم لاعب **"
+                                    safe_post(username, f"{API}/{ch_id}/messages", {"content": reply_msg}, 0)
+                                    d["logs"].insert(0, "👑 [AI Pro] مسار طلب شكوى.")
+                                    ai_pro_state = 2
+
+                            elif ai_pro_state == 1 or ai_pro_state == 2:
+                                urls = re.findall(r'(https?://[^\s]+)', player_text)
+                                attachments = m.get("attachments", [])
+                                evidence_url = urls[0] if urls else (attachments[0].get("url") if attachments else None)
+                                
+                                if evidence_url:
+                                    time.sleep(1.5)
+                                    safe_post(username, f"{API}/{ch_id}/typing", {}, 0)
+                                    time.sleep(1)
+                                    
+                                    if ai_pro_state == 1:
+                                        thanks_msg = "** سيتم طلب دليل حضرك الرجاء تحلى بل صبر  **"
+                                    else:
+                                        thanks_msg = "__شكرًا لإرسال المعلومات المطلوبة :__\nجاري العمل على الشكوى ⏱️ طلبك الآن قيد المراجعة من قبل الفريق المختص. سنقوم بإبلاغك فور اتخاذ أي إجراء بخصوص الشكوى. ⏳ يرجى التحلي بالصبر، وسنعود إليك في أقرب وقت ممكن."
+                                    
+                                    safe_post(username, f"{API}/{ch_id}/messages", {"content": thanks_msg}, 0)
+                                    d["logs"].insert(0, f"👑 [AI Pro] تم استلام الدليل وإنهاء الطلب بنجاح.")
+                                    return 
+        except Exception: pass
 
 def process_ticket(username, ch_id, name, parent_id):
     session_data = user_sessions[username]
@@ -336,6 +277,7 @@ def process_ticket(username, ch_id, name, parent_id):
         if ch_id in session_data["active_tickets"]: return
         session_data["active_tickets"].add(ch_id)
 
+    # 🚀 هنا التحكم الكامل بالسرعة من لوحة التحكم 🚀
     current_speed = session_data["speed"]
     custom_msg = session_data["message"]
     
@@ -345,18 +287,11 @@ def process_ticket(username, ch_id, name, parent_id):
     session_data["last_sent_text"] = custom_msg
     session_data["last_sent_time"] = now_ts
 
-    # 🚀 نظام الإصرار والاختراق: يحاول 10 مرات متتالية عشان يتجاوز خطأ (تعذر استلام)
-    res = None
-    for attempt in range(10):
-        speed_to_use = current_speed if attempt == 0 else 0
-        res = safe_post(username, f"{API}/{ch_id}/messages", {"content": custom_msg}, speed_to_use, is_claim=True)
-        if res and res.status_code in [200, 201]:
-            break
-        time.sleep(0.3)
+    res = safe_post(username, f"{API}/{ch_id}/messages", {"content": custom_msg}, current_speed)
     
     with session_data["lock"]:
         if res and res.status_code in [200, 201]:
-            ticket_url = f"https://discord.com/channels/{SERVER_ID}/{ch_id}"
+            ticket_url = f"[https://discord.com/channels/](https://discord.com/channels/){SERVER_ID}/{ch_id}"
             log_text = f"✨ استلمت **#{name}** | <a href='{ticket_url}' target='_blank'>الرابط</a>"
 
             session_data["claimed_history"].append({"id": ch_id, "name": name})
@@ -378,8 +313,7 @@ def process_ticket(username, ch_id, name, parent_id):
                 if len(session_data["logs"]) > 20: session_data["logs"].pop()
                 save_db(username)
                 
-                if session_data.get("ai_enabled") or session_data.get("ai_pro_enabled"):
-                    threading.Thread(target=setup_ai_tracking, args=(username, ch_id, name), daemon=True).start()
+                threading.Thread(target=ai_worker, args=(username, ch_id), daemon=True).start()
 
                 if session_data["count"] >= session_data["max_tickets"]:
                     session_data["running"] = False
@@ -393,7 +327,10 @@ def run_discord_bot(username):
     d = user_sessions[username]
     token = d["token"]
     
-    d["logs"].insert(0, "🚀 تم تفعيل الرادار الصاروخي (النظام الكلاسيكي المباشر)...")
+    try: d["http_session"].get("[https://discord.com/api/v9/users/@me](https://discord.com/api/v9/users/@me)", headers=get_secure_headers(token), timeout=5)
+    except: pass
+    
+    d["logs"].insert(0, "🚀 تم تفعيل رادار ديسكورد والاتصال الساخن للسرعة القصوى...")
     
     def on_message(ws, msg):
         if not d["running"] or d["banned_secure"]:
@@ -405,7 +342,7 @@ def run_discord_bot(username):
             
             if raw.get("op") == 10: ws.send(json.dumps({"op": 1, "d": None}))
             
-            # 🚀 الاستلام الفوري المباشر بمجرد فتح الروم
+            # 🚀 الاستلام المباشر العادي بدون انتظار أي رسالة
             if t == "CHANNEL_CREATE":
                 if evt_data.get("guild_id") == SERVER_ID and evt_data.get("type") == 0:
                     ch_id = evt_data.get("id")
@@ -418,13 +355,6 @@ def run_discord_bot(username):
                         if d["count"] >= d["max_tickets"] or not d["running"]: return
                     
                     threading.Thread(target=process_ticket, args=(username, ch_id, name, parent_id)).start()
-
-            # 🤖 التقاط رسائل اللاعبين لعمل الذكاء الاصطناعي
-            elif t == "MESSAGE_CREATE":
-                ch_id = evt_data.get("channel_id")
-                if ch_id in d.get("ai_tracking", {}) and not evt_data.get("author", {}).get("bot", False):
-                    if evt_data.get("author", {}).get("username") != username:
-                        threading.Thread(target=process_ai_message, args=(username, ch_id, evt_data)).start()
         except: pass
 
     def on_open(ws):
@@ -446,7 +376,7 @@ LANDING_HTML = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DISCORD TICKET</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&display=swap');
+        @import url('[https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&display=swap](https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&display=swap)');
         body { background: #030712; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: 'Orbitron', sans-serif; overflow: hidden; }
         .glitch-wrapper { position: relative; text-align: center; }
         h1 { font-size: 3.5rem; margin: 0; letter-spacing: 4px; color: #f8fafc; text-shadow: 0 0 20px rgba(255,255,255,0.2); }
@@ -472,7 +402,7 @@ LOGIN_HTML = """
     <meta charset="UTF-8">
     <title>بوابة العبور</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@600;800&display=swap');
+        @import url('[https://fonts.googleapis.com/css2?family=Cairo:wght@600;800&display=swap](https://fonts.googleapis.com/css2?family=Cairo:wght@600;800&display=swap)');
         body { background: #030712; color: #fff; font-family: 'Cairo', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
         .card { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(15px); padding: 40px; border-radius: 16px; border: 1px solid rgba(59, 130, 246, 0.2); box-shadow: 0 20px 50px rgba(0,0,0,0.8); width: 320px; text-align: center; }
         input { width: 100%; padding: 12px; margin: 10px 0; background: rgba(0,0,0,0.6); border: 1px solid #1e293b; color: #fff; border-radius: 8px; text-align: center; outline: none; transition: 0.3s; box-sizing: border-box;}
@@ -501,9 +431,9 @@ PANEL_HTML = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>M.R Elite Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="[https://cdn.jsdelivr.net/npm/chart.js](https://cdn.jsdelivr.net/npm/chart.js)"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap');
+        @import url('[https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap](https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap)');
         
         :root { --prim: {{ theme_data.prim }}; --sec: {{ theme_data.sec }}; --bg: {{ theme_data.bg }}; }
         
@@ -552,7 +482,7 @@ PANEL_HTML = """
 </head>
 <body>
     <div class="glass-card">
-        <h1>M.R SYSTEM (CLASSIC)</h1>
+        <h1>M.R SYSTEM</h1>
         <div class="user-tag">👤 {{ username }}</div>
         
         <div class="badge-container">
@@ -586,7 +516,7 @@ PANEL_HTML = """
                 <textarea name="ai_rules" class="ai-textarea" placeholder="أحتاج مساعدة|تفضل كيف أخدمك">{{ ai_rules }}</textarea>
                 <div style="display:flex; gap:8px;">
                     <div style="flex:1;"><div class="config-title">الحد الأقصى:</div><input type="number" name="max_tickets" value="{{ max_tickets }}" min="1"></div>
-                    <div style="flex:1;"><div class="config-title">السرعة:</div><input type="number" step="0.1" name="custom_speed" value="{{ speed }}" min="0"></div>
+                    <div style="flex:1;"><div class="config-title">السرعة:</div><input type="number" step="0.01" name="custom_speed" value="{{ speed }}" min="0"></div>
                 </div>
                 <div class="config-title">نص الرد الافتراضي:</div>
                 <textarea name="custom_msg">{{ message }}</textarea>
@@ -796,7 +726,7 @@ def api_chat(ch_id):
     u = session['user']
     token = user_sessions[u]["token"]
     try:
-        res = requests.get(f"{API}/{ch_id}/messages?limit=15", headers=get_secure_headers(token), timeout=3)
+        res = user_sessions[u]["http_session"].get(f"{API}/{ch_id}/messages?limit=15", timeout=3)
         if res.status_code == 200:
             msgs = res.json()
             msgs.reverse()
