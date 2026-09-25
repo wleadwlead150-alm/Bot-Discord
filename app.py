@@ -1,5 +1,4 @@
 import json
-import re
 import time
 import requests
 import websocket
@@ -29,6 +28,7 @@ API = "https://discord.com/api/v9/channels"
 SAIF_ALERT_CHANNEL = "1545711547169513483"
 MASTER_PASSWORD = "MR_EAGLE_99"
 
+# 🎯 أيديات الفئات الدقيقة
 CATEGORY_IDS = {
     "administrative": "1353444395575414844",
     "players": "1353444390387060736",
@@ -44,16 +44,14 @@ THEMES = {
 
 user_sessions = {
     u: {
-        "running": False, "speed": 1.5, "thread": None, "token": "", "proxy": "", "webhook": "",
+        "running": False, "speed": 1.1, "thread": None, "token": "", "proxy": "", "webhook": "",
         "message": f"أهلاً بك، معك {u} الإدارة العليا. كيف يمكنني مساعدتك؟",
-        "reply_template": "default", "ticket_filter": "administrative" if u == "isso" else "all",
+        "ticket_filter": "administrative" if u == "isso" else "all",
         "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 10, 
-        "cooldown_mode": False, "skip_next": False, "silent_mode": False, 
-        "rate_limit_errors": 0, "banned_secure": False, "last_sent_text": "", "last_sent_time": 0,
+        "cooldown_mode": False, "skip_next": False, "banned_secure": False, 
+        "last_sent_text": "", "last_sent_time": 0,
         "active_tickets": set(), "lock": threading.Lock(),
-        "theme": "lynwood", "ai_enabled": False, "ai_rules": "أحتاج مساعدة|تفضل كيف أخدمك",
-        "claimed_history": [],
-        "http_session": requests.Session()
+        "theme": "cyber_red", "claimed_history": []
     } for u in USERS.keys()
 }
 
@@ -75,16 +73,13 @@ def init_db():
         c = conn.cursor()
         c.execute('''CREATE TABLE IF NOT EXISTS users
                      (username TEXT PRIMARY KEY, token TEXT, proxy TEXT, message TEXT, 
-                      reply_template TEXT, ticket_filter TEXT, speed REAL, max_tickets INTEGER,
-                      count INTEGER, total_lifetime INTEGER, webhook TEXT, theme TEXT, ai_enabled INTEGER, ai_rules TEXT)''')
+                      ticket_filter TEXT, speed REAL, max_tickets INTEGER,
+                      count INTEGER, total_lifetime INTEGER, webhook TEXT, theme TEXT)''')
         
-        # التأكد من مطابقة الأعمدة تماماً لتجنب أي خطأ في القيم
+        # لتجنب مشاكل الأعمدة عند التحديث
         c.execute("PRAGMA table_info(users)")
         existing_cols = [col[1] for col in c.fetchall()]
-        required_cols = {
-            "webhook": "TEXT DEFAULT ''", "theme": "TEXT DEFAULT 'lynwood'", 
-            "ai_enabled": "INTEGER DEFAULT 0", "ai_rules": "TEXT DEFAULT ''"
-        }
+        required_cols = {"webhook": "TEXT DEFAULT ''", "theme": "TEXT DEFAULT 'lynwood'", "ticket_filter": "TEXT DEFAULT 'all'"}
         for col_name, col_type in required_cols.items():
             if col_name not in existing_cols:
                 try: c.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
@@ -94,9 +89,9 @@ def init_db():
             c.execute("SELECT username FROM users WHERE username=?", (u,))
             if not c.fetchone():
                 filter_val = "administrative" if u == "isso" else "all"
-                c.execute('''INSERT INTO users (username, token, proxy, message, reply_template, ticket_filter, speed, max_tickets, count, total_lifetime, webhook, theme, ai_enabled, ai_rules)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', 'lynwood', 0, 'أحتاج مساعدة|تفضل')''', 
-                             (u, "", "", user_sessions[u]["message"], "default", filter_val, 1.5, 10, 0, 0))
+                c.execute('''INSERT INTO users (username, token, proxy, message, ticket_filter, speed, max_tickets, count, total_lifetime, webhook, theme)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', 'cyber_red')''', 
+                             (u, "", "", user_sessions[u]["message"], filter_val, 1.1, 10, 0, 0))
         conn.commit()
         conn.close()
 
@@ -114,16 +109,13 @@ def load_db():
                 row_dict = dict(zip(col_names, r))
                 user_sessions[uname]["token"] = cipher(row_dict.get("token", ""), False)
                 user_sessions[uname]["message"] = row_dict.get("message", "")
-                user_sessions[uname]["reply_template"] = row_dict.get("reply_template", "default")
                 user_sessions[uname]["ticket_filter"] = row_dict.get("ticket_filter", "all")
-                user_sessions[uname]["speed"] = row_dict.get("speed", 1.5)
+                user_sessions[uname]["speed"] = row_dict.get("speed", 1.1)
                 user_sessions[uname]["max_tickets"] = row_dict.get("max_tickets", 10)
                 user_sessions[uname]["count"] = row_dict.get("count", 0)
                 user_sessions[uname]["total_lifetime"] = row_dict.get("total_lifetime", 0)
                 user_sessions[uname]["webhook"] = row_dict.get("webhook", "")
-                user_sessions[uname]["theme"] = row_dict.get("theme", "lynwood")
-                user_sessions[uname]["ai_enabled"] = bool(row_dict.get("ai_enabled", 0))
-                user_sessions[uname]["ai_rules"] = row_dict.get("ai_rules", "")
+                user_sessions[uname]["theme"] = row_dict.get("theme", "cyber_red")
 
 def save_db(uname):
     with db_lock:
@@ -131,11 +123,19 @@ def save_db(uname):
         c = conn.cursor()
         d = user_sessions[uname]
         enc_token = cipher(d["token"], True)
-        c.execute('''UPDATE users SET token=?, proxy=?, message=?, reply_template=?, ticket_filter=?, 
-                     speed=?, max_tickets=?, count=?, total_lifetime=?, webhook=?, theme=?, ai_enabled=?, ai_rules=? WHERE username=?''',
-                  (enc_token, d.get("proxy",""), d["message"], d["reply_template"], d["ticket_filter"],
-                   d["speed"], d["max_tickets"], d["count"], d["total_lifetime"], d.get("webhook",""), 
-                   d.get("theme","lynwood"), int(d["ai_enabled"]), d["ai_rules"], uname))
+        
+        # التأكد من وجود الحساب قبل التحديث
+        c.execute("SELECT username FROM users WHERE username=?", (uname,))
+        if not c.fetchone():
+            c.execute('''INSERT INTO users (username, token, proxy, message, ticket_filter, speed, max_tickets, count, total_lifetime, webhook, theme)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
+                      (uname, enc_token, d.get("proxy",""), d["message"], d["ticket_filter"], d["speed"], d["max_tickets"], d["count"], d["total_lifetime"], d.get("webhook",""), d.get("theme","cyber_red")))
+        else:
+            c.execute('''UPDATE users SET token=?, proxy=?, message=?, ticket_filter=?, 
+                         speed=?, max_tickets=?, count=?, total_lifetime=?, webhook=?, theme=? WHERE username=?''',
+                      (enc_token, d.get("proxy",""), d["message"], d["ticket_filter"],
+                       d["speed"], d["max_tickets"], d["count"], d["total_lifetime"], d.get("webhook",""), 
+                       d.get("theme","cyber_red"), uname))
         conn.commit()
         conn.close()
 
@@ -152,20 +152,12 @@ def get_secure_headers(token):
         "X-Super-Properties": b64_props, "X-Discord-Locale": "ar", "Accept-Language": "ar,en-US;q=0.9,en;q=0.8"
     }
 
-def send_typing_bg(token, url):
-    try: requests.post(url, headers=get_secure_headers(token), timeout=2)
-    except: pass
-
-def safe_post(username, url, payload, current_speed, is_claim=False):
+def safe_post(username, url, payload, current_speed):
     d = user_sessions[username]
     token = d["token"]
     headers = get_secure_headers(token)
     
     try:
-        if "messages" in url and "typing" not in url and not is_claim and current_speed > 0:
-            typing_url = f"{API}/{url.split('/channels/')[1].split('/')[0]}/typing"
-            threading.Thread(target=send_typing_bg, args=(token, typing_url)).start()
-            
         if current_speed > 0:
             time.sleep(current_speed)
             
@@ -177,32 +169,23 @@ def safe_post(username, url, payload, current_speed, is_claim=False):
             time.sleep(reset_after + 0.05)
             
         if res.status_code == 429:
-            retry_after = res.json().get("retry_after", current_speed + 1.0)
+            retry_after = res.json().get("retry_after", 1.0)
             time.sleep(retry_after + 0.1)
-            return safe_post(username, url, payload, current_speed, is_claim)
+            return safe_post(username, url, payload, 0)
         return res
     except Exception: return None
 
-def process_ai_message(username, ch_id, message_data):
-    d = user_sessions[username]
-    if not d.get("ai_enabled"): return
-    
-    player_text = message_data.get("content", "").lower()
-    if d.get("ai_rules"):
-        rules = d["ai_rules"].split('\n')
-        for rule in rules:
-            if '|' in rule:
-                keyword, reply = rule.split('|', 1)
-                if keyword.strip().lower() in player_text:
-                    safe_post(username, f"{API}/{ch_id}/messages", {"content": reply.strip()}, 1.5)
-                    d["logs"].insert(0, f"🤖 [AI] رصد '{keyword}' وتم الرد.")
-                    return
-
 def process_ticket(username, ch_id, name, parent_id):
     session_data = user_sessions[username]
+    
     with session_data["lock"]:
         if not session_data["running"] or session_data["banned_secure"]: return
         
+        if session_data["count"] >= session_data["max_tickets"]:
+            session_data["running"] = False
+            return
+
+        # 🛡️ فلتر الفئات بدقة
         filter_mode = session_data.get("ticket_filter", "all")
         if filter_mode != "all":
             expected_category = CATEGORY_IDS.get(filter_mode)
@@ -215,13 +198,15 @@ def process_ticket(username, ch_id, name, parent_id):
                 session_data["logs"].insert(0, f"⚡ [Cooldown] تم تخطي التكت `#{name}`.")
                 return
             else: session_data["skip_next"] = True
-
-        if session_data["count"] >= session_data["max_tickets"]:
-            session_data["running"] = False
-            return
             
         if ch_id in session_data["active_tickets"]: return
         session_data["active_tickets"].add(ch_id)
+        
+        # حجز التكت
+        session_data["count"] += 1
+        session_data["total_lifetime"] += 1
+        current_count = session_data["count"]
+        max_lim = session_data["max_tickets"]
 
     current_speed = session_data["speed"]
     custom_msg = session_data["message"]
@@ -232,13 +217,8 @@ def process_ticket(username, ch_id, name, parent_id):
     session_data["last_sent_text"] = custom_msg
     session_data["last_sent_time"] = now_ts
 
-    res = None
-    for attempt in range(10):
-        speed_to_use = current_speed if attempt == 0 else 0
-        res = safe_post(username, f"{API}/{ch_id}/messages", {"content": custom_msg}, speed_to_use, is_claim=True)
-        if res and res.status_code in [200, 201]:
-            break
-        time.sleep(0.3)
+    # 🚀 الاستلام الكلاسيكي المباشر والفوري
+    res = safe_post(username, f"{API}/{ch_id}/messages", {"content": custom_msg}, current_speed)
     
     with session_data["lock"]:
         if res and res.status_code in [200, 201]:
@@ -250,24 +230,19 @@ def process_ticket(username, ch_id, name, parent_id):
 
             if username == "Saif":
                 alert_payload = {"content": f"💎 **إشعار الإدارة** 💎\nالإداري **{username}** استلم تذكرة ✅\n🎫 `#{name}`\n🔗 {ticket_url}"}
-                threading.Thread(target=safe_post, args=(username, f"{API}/{SAIF_ALERT_CHANNEL}/messages", alert_payload, 0.5)).start()
-            
-            if session_data.get("webhook"):
-                wh_payload = {"username": "M.R ELITE", "content": f"🚀 تم استلام تكت جديد بنجاح يا **{username}**!\nالتكت: #{name}\nالرابط: {ticket_url}"}
-                try: requests.post(session_data["webhook"], json=wh_payload, timeout=2)
-                except: pass
+                threading.Thread(target=safe_post, args=(username, f"{API}/{SAIF_ALERT_CHANNEL}/messages", alert_payload, 0)).start()
 
-            if session_data["count"] < session_data["max_tickets"]:
-                session_data["count"] += 1
-                session_data["total_lifetime"] += 1
-                session_data["logs"].insert(0, f"{log_text} ({session_data['count']}/{session_data['max_tickets']})")
-                if len(session_data["logs"]) > 20: session_data["logs"].pop()
-                save_db(username)
+            session_data["logs"].insert(0, f"{log_text} ({current_count}/{max_lim})")
+            if len(session_data["logs"]) > 20: session_data["logs"].pop()
+            save_db(username)
 
-                if session_data["count"] >= session_data["max_tickets"]:
-                    session_data["running"] = False
-                    session_data["logs"].insert(0, "🛑 تم بلوغ الحد الأقصى، توقف النظام.")
+            if current_count >= max_lim:
+                session_data["running"] = False
+                session_data["logs"].insert(0, "🛑 تم بلوغ الحد الأقصى، توقف النظام.")
         else:
+            # إذا فشل الاستلام نعيد العداد
+            session_data["count"] = max(0, session_data["count"] - 1)
+            session_data["total_lifetime"] = max(0, session_data["total_lifetime"] - 1)
             session_data["logs"].insert(0, f"<span style='color: #ef4444;'>❌ تعذر استلام #{name}</span>")
             
         if ch_id in session_data["active_tickets"]: session_data["active_tickets"].remove(ch_id)
@@ -276,7 +251,7 @@ def run_discord_bot(username):
     d = user_sessions[username]
     token = d["token"]
     
-    d["logs"].insert(0, "🚀 تم تفعيل الرادار الصاروخي الكلاسيكي...")
+    d["logs"].insert(0, "🚀 تم تفعيل النظام الكلاسيكي السريع جداً...")
     
     def on_message(ws, msg):
         if not d["running"] or d["banned_secure"]:
@@ -288,24 +263,21 @@ def run_discord_bot(username):
             
             if raw.get("op") == 10: ws.send(json.dumps({"op": 1, "d": None}))
             
+            # 🚀 الاستلام الفوري بمجرد فتح الروم
             if t == "CHANNEL_CREATE":
                 if evt_data.get("guild_id") == SERVER_ID and evt_data.get("type") == 0:
                     ch_id = evt_data.get("id")
                     name = evt_data.get("name", "").lower()
                     parent_id = evt_data.get("parent_id", "")
                     
-                    if time.time() - (((int(ch_id) >> 22) + 1420070400000) / 1000.0) > 90: return
-                    
+                    # درع التكتات القديمة (15 ثانية)
+                    created_timestamp = ((int(ch_id) >> 22) + 1420070400000) / 1000.0
+                    if time.time() - created_timestamp > 15: return 
+
                     with d["lock"]:
                         if d["count"] >= d["max_tickets"] or not d["running"]: return
                     
                     threading.Thread(target=process_ticket, args=(username, ch_id, name, parent_id)).start()
-
-            elif t == "MESSAGE_CREATE":
-                ch_id = evt_data.get("channel_id")
-                if ch_id in d["active_tickets"] and not evt_data.get("author", {}).get("bot", False):
-                    if evt_data.get("author", {}).get("username") != username:
-                        threading.Thread(target=process_ai_message, args=(username, ch_id, evt_data)).start()
         except: pass
 
     def on_open(ws):
@@ -405,15 +377,11 @@ PANEL_HTML = """
         .btn-stop { background: linear-gradient(135deg, #dc2626, #991b1b); }
         .btn-secondary { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); }
         
-        .btn-ai-on { background: linear-gradient(135deg, #8b5cf6, #6d28d9); box-shadow: 0 0 15px rgba(139,92,246,0.4);}
-        .btn-ai-off { background: rgba(0,0,0,0.5); border: 1px solid #4c1d95; color: #c4b5fd; }
-
         .config-section { background: rgba(0,0,0,0.4); padding: 14px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.05); text-align: right;}
         .config-title { color: var(--prim); font-size: 11px; margin-bottom: 4px; font-weight: 700; }
         input, select, textarea { width: 100%; padding: 10px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 10px; box-sizing: border-box; font-size: 11px; margin-bottom: 8px; font-family: 'Cairo'; outline: none;}
         input:focus, select:focus, textarea:focus { border-color: var(--prim); }
         textarea { height: 50px; resize: none; }
-        .ai-textarea { height: 60px; border-color: #8b5cf6; }
 
         .log-box { background: #000; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 10px; height: 100px; overflow-y: auto; text-align: right; font-size: 11px; color: #94a3b8; margin-top: 10px; }
         
@@ -448,13 +416,7 @@ PANEL_HTML = """
             </button>
         </form>
 
-        <div style="margin: 10px 0;">
-            <form action="/toggle_ai" method="post">
-                <button type="submit" class="btn {% if ai_enabled %}btn-ai-on{% else %}btn-ai-off{% endif %}">🤖 نظام الذكاء الاصطناعي (AI)</button>
-            </form>
-        </div>
-
-        <div class="config-section">
+        <div class="config-section" style="margin-top:15px;">
             <form action="/update_settings" method="post">
                 <div class="config-title">تخصيص المظهر (Theme):</div>
                 <select name="theme">
@@ -470,13 +432,10 @@ PANEL_HTML = """
                     <option value="players" {% if ticket_filter == 'players' %}selected{% endif %}>👤 شكاوى اللاعبين (1353444390387060736)</option>
                     <option value="factions" {% if ticket_filter == 'factions' %}selected{% endif %}>🎖️ شكاوى قائدات الفصائل (1353444400679747665)</option>
                 </select>
-
-                <div class="config-title">قواعد الذكاء الاصطناعي (الكلمة|الرد):</div>
-                <textarea name="ai_rules" class="ai-textarea" placeholder="أحتاج مساعدة|تفضل كيف أخدمك">{{ ai_rules }}</textarea>
                 
                 <div style="display:flex; gap:8px;">
                     <div style="flex:1;"><div class="config-title">الحد الأقصى:</div><input type="number" name="max_tickets" value="{{ max_tickets }}" min="1"></div>
-                    <div style="flex:1;"><div class="config-title">السرعة:</div><input type="number" step="0.01" name="custom_speed" value="{{ speed }}"></div>
+                    <div style="flex:1;"><div class="config-title">السرعة (ثانية):</div><input type="number" step="0.01" name="custom_speed" value="{{ speed }}"></div>
                 </div>
                 
                 <div class="config-title">نص الرد الافتراضي:</div>
@@ -611,12 +570,11 @@ MASTER_HTML = """
     <h1>👑 لوحة التحكم العليا (Master)</h1>
     <a href="/export_csv" class="btn btn-green" style="display:inline-block; margin-bottom:20px;">📥 تحميل تقرير (Excel CSV)</a>
     <table>
-        <tr><th>اسم الحساب</th><th>الحالة</th><th>AI</th><th>القسم</th><th>المنجز</th><th>التراكمي</th><th>إجراء</th></tr>
+        <tr><th>اسم الحساب</th><th>الحالة</th><th>القسم</th><th>المنجز</th><th>التراكمي</th><th>إجراء</th></tr>
         {% for u, d in users.items() %}
         <tr>
             <td>{{ u }}</td>
             <td style="color: {{ '#10b981' if d.running else '#ef4444' }};">{{ 'شغال 🟢' if d.running else 'متوقف 🔴' }}</td>
-            <td>{{ '🤖 On' if d.ai_enabled else 'Off' }}</td>
             <td>{{ d.ticket_filter }}</td>
             <td>{{ d.count }} / {{ d.max_tickets }}</td>
             <td>{{ d.total_lifetime }}</td>
@@ -662,7 +620,7 @@ def panel():
     
     return render_template_string(PANEL_HTML, username=usr, max_tickets=d["max_tickets"], count=d["count"], speed=d["speed"], 
                                   message=d["message"], webhook=d.get("webhook",""), theme=theme_key, 
-                                  themes=THEMES, theme_data=theme_data, ai_enabled=d["ai_enabled"], ai_rules=d["ai_rules"],
+                                  themes=THEMES, theme_data=theme_data,
                                   ticket_filter=d.get("ticket_filter", "all"),
                                   running=d["running"], total_lifetime=d["total_lifetime"], logs=d["logs"])
 
@@ -707,14 +665,6 @@ def toggle():
         else: user_sessions[usr]["running"] = False
     return redirect(url_for('panel'))
 
-@app.route('/toggle_ai', methods=['POST'])
-def toggle_ai():
-    if 'user' in session:
-        usr = session['user']
-        user_sessions[usr]["ai_enabled"] = not user_sessions[usr]["ai_enabled"]
-        save_db(usr)
-    return redirect(url_for('panel'))
-
 @app.route('/update_settings', methods=['POST'])
 def update_settings():
     if 'user' in session:
@@ -722,10 +672,9 @@ def update_settings():
         user_sessions[usr]["message"] = request.form.get('custom_msg', '').strip()
         user_sessions[usr]["theme"] = request.form.get('theme', 'lynwood')
         user_sessions[usr]["ticket_filter"] = request.form.get('ticket_filter', 'all')
-        user_sessions[usr]["ai_rules"] = request.form.get('ai_rules', '').strip()
         try:
             user_sessions[usr]["max_tickets"] = int(request.form.get('max_tickets', 10))
-            user_sessions[usr]["speed"] = float(request.form.get('custom_speed', 1.5))
+            user_sessions[usr]["speed"] = float(request.form.get('custom_speed', 1.1))
         except: pass
         save_db(usr)
     return redirect(url_for('panel'))
@@ -750,9 +699,9 @@ def export_csv():
     if not session.get('master'): return "Access Denied"
     si = StringIO()
     cw = csv.writer(si)
-    cw.writerow(['Username', 'Status', 'AI', 'Filter', 'Daily Count', 'Total Lifetime'])
+    cw.writerow(['Username', 'Status', 'Filter', 'Daily Count', 'Total Lifetime'])
     for u, d in user_sessions.items():
-        cw.writerow([u, 'Running' if d["running"] else 'Stopped', 'On' if d["ai_enabled"] else 'Off', d["ticket_filter"], d["count"], d["total_lifetime"]])
+        cw.writerow([u, 'Running' if d["running"] else 'Stopped', d["ticket_filter"], d["count"], d["total_lifetime"]])
     output = make_response(si.getvalue())
     output.headers["Content-Disposition"] = "attachment; filename=M_R_Elite_Report.csv"
     output.headers["Content-type"] = "text/csv"
