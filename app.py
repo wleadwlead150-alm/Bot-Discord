@@ -29,6 +29,7 @@ API = "https://discord.com/api/v9/channels"
 SAIF_ALERT_CHANNEL = "1545711547169513483"
 MASTER_PASSWORD = "MR_EAGLE_99"
 
+# 🎯 أيديات الفئات الدقيقة
 CATEGORY_IDS = {
     "administrative": "1353444395575414844",
     "players": "1353444390387060736",
@@ -76,15 +77,27 @@ def init_db():
         c.execute('''CREATE TABLE IF NOT EXISTS users
                      (username TEXT PRIMARY KEY, token TEXT, proxy TEXT, message TEXT, 
                       reply_template TEXT, ticket_filter TEXT, speed REAL, max_tickets INTEGER,
-                      count INTEGER, total_lifetime INTEGER, webhook TEXT, theme TEXT, ai_enabled INTEGER, ai_rules TEXT)''')
+                      count INTEGER, total_lifetime INTEGER)''')
         
+        # التأكد من مطابقة الأعمدة
+        c.execute("PRAGMA table_info(users)")
+        existing_cols = [col[1] for col in c.fetchall()]
+        required_cols = {
+            "webhook": "TEXT DEFAULT ''", "theme": "TEXT DEFAULT 'lynwood'", 
+            "ai_enabled": "INTEGER DEFAULT 0", "ai_rules": "TEXT DEFAULT ''"
+        }
+        for col_name, col_type in required_cols.items():
+            if col_name not in existing_cols:
+                try: c.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
+                except: pass
+
         for u in USERS.keys():
             c.execute("SELECT username FROM users WHERE username=?", (u,))
             if not c.fetchone():
                 filter_val = "administrative" if u == "isso" else "all"
                 c.execute('''INSERT INTO users (username, token, proxy, message, reply_template, ticket_filter, speed, max_tickets, count, total_lifetime, webhook, theme, ai_enabled, ai_rules)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
-                             (u, "", "", user_sessions[u]["message"], "default", filter_val, 1.5, 10, 0, 0, "", "lynwood", 0, "أحتاج مساعدة|تفضل"))
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', 'lynwood', 0, 'أحتاج مساعدة|تفضل')''', 
+                             (u, "", "", user_sessions[u]["message"], "default", filter_val, 1.5, 10, 0, 0))
         conn.commit()
         conn.close()
 
@@ -189,6 +202,7 @@ def process_ai_message(username, ch_id, message_data):
 def process_ticket(username, ch_id, name, parent_id):
     session_data = user_sessions[username]
     
+    # 🛡️ قفل الأمان الصارم للتحقق من الحد الأقصى وعدم تجاوزه أبداً
     with session_data["lock"]:
         if not session_data["running"] or session_data["banned_secure"]: return
         
@@ -196,6 +210,7 @@ def process_ticket(username, ch_id, name, parent_id):
             session_data["running"] = False
             return
 
+        # 🛡️ فلتر الفئات بدقة حسب اختيار المستخدم
         filter_mode = session_data.get("ticket_filter", "all")
         if filter_mode != "all":
             expected_category = CATEGORY_IDS.get(filter_mode)
@@ -212,6 +227,7 @@ def process_ticket(username, ch_id, name, parent_id):
         if ch_id in session_data["active_tickets"]: return
         session_data["active_tickets"].add(ch_id)
         
+        # زيادة العداد بحذر داخل القفل
         session_data["count"] += 1
         session_data["total_lifetime"] += 1
         current_count = session_data["count"]
@@ -259,6 +275,7 @@ def process_ticket(username, ch_id, name, parent_id):
                 session_data["running"] = False
                 session_data["logs"].insert(0, "🛑 تم بلوغ الحد الأقصى، توقف النظام.")
         else:
+            # إذا فشل الاستلام، نعيد تخفيض العداد لأنه لم يُستلم حقاً
             session_data["count"] = max(0, session_data["count"] - 1)
             session_data["total_lifetime"] = max(0, session_data["total_lifetime"] - 1)
             session_data["logs"].insert(0, f"<span style='color: #ef4444;'>❌ تعذر استلام #{name}</span>")
@@ -287,6 +304,7 @@ def run_discord_bot(username):
                     name = evt_data.get("name", "").lower()
                     parent_id = evt_data.get("parent_id", "")
                     
+                    # 🛡️ درع منع التكتات القديمة (تجاهل أي روم مر على إنشائه أكثر من 15 ثانية)
                     created_timestamp = ((int(ch_id) >> 22) + 1420070400000) / 1000.0
                     if time.time() - created_timestamp > 15: return 
 
@@ -686,7 +704,7 @@ def api_chat(ch_id):
             msgs = res.json()
             msgs.reverse()
             clean_msgs = [{"author": m["author"]["username"], "content": m["content"], "bot": m["author"].get("bot", False), "attachments": m.get("attachments", [])} for m in msgs]
-            return json.dumps(clean_nsgs if 'clean_nsgs' in locals() else clean_msgs)
+            return json.dumps(clean_msgs)
     except Exception: pass
     return json.dumps([])
 
@@ -751,8 +769,6 @@ def export_csv():
     output.headers["Content-Disposition"] = "attachment; filename=M_R_Elite_Report.csv"
     output.headers["Content-type"] = "text/csv"
     return output
-
-@app.reset_all = lambda: None # type: ignore
 
 @app.route('/reset_all', methods=['POST'])
 def reset_all():
