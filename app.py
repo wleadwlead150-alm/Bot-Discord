@@ -42,8 +42,6 @@ global_settings = {"min_speed": 1.0, "broadcast_msg": "", "broadcast_id": 0}
 
 user_sessions = {}
 db_lock = threading.Lock()
-anti_clash_lock = threading.Lock()
-last_global_claim_ts = 0
 
 def cipher(text, encrypt=True):
     if not text: return ""
@@ -150,6 +148,7 @@ def get_secure_headers(token):
     return {"Authorization": token.strip(), "Content-Type": "application/json", "User-Agent": "Discord/241.0 CFNetwork/1498.700.2 Darwin/23.4.0"}
 
 def safe_post(username, url, payload, current_speed, is_claim=False):
+    # رجعنا لنظام البوست القديم الصاروخي بدون تأخيرات إضافية
     d = user_sessions[username]
     token = d["token"]
     headers = get_secure_headers(token)
@@ -158,17 +157,19 @@ def safe_post(username, url, payload, current_speed, is_claim=False):
         res = requests.post(url, json=payload, headers=headers, timeout=5)
         
         remaining = int(res.headers.get('X-RateLimit-Remaining', 5))
-        if remaining <= 2: time.sleep(0.2) 
-        if remaining <= 0: time.sleep(float(res.headers.get('X-RateLimit-Reset-After', 0.5)) + 0.05)
-        
+        if remaining <= 0: 
+            reset_after = float(res.headers.get('X-RateLimit-Reset-After', 0.5))
+            time.sleep(reset_after + 0.05)
+            
         if res.status_code == 429:
-            time.sleep(res.json().get("retry_after", 1.0) + 0.1)
+            retry_after = res.json().get("retry_after", 1.0)
+            time.sleep(retry_after + 0.1)
             return safe_post(username, url, payload, 0)
         return res
     except: return None
 
 def process_ticket(username, ch_id, name, parent_id):
-    global last_global_claim_ts
+    # رجعنا لمنطق القنص القديم والمجرب للسرعة القصوى
     session_data = user_sessions[username]
     
     with session_data["lock"]:
@@ -176,41 +177,61 @@ def process_ticket(username, ch_id, name, parent_id):
         if session_data["count"] >= session_data["max_tickets"]:
             session_data["status"] = "stopped"
             return
+            
         filter_mode = session_data.get("ticket_filter", "all")
         if filter_mode != "all" and str(parent_id) != str(CATEGORY_IDS.get(filter_mode)): return
+        
         if ch_id in session_data["active_tickets"]: return
         session_data["active_tickets"].add(ch_id)
+        
         session_data["count"] += 1
         session_data["total_lifetime"] += 1
         current_count = session_data["count"]
+        max_lim = session_data["max_tickets"]
 
-    with anti_clash_lock:
-        now = time.time()
-        if now - last_global_claim_ts < 0.05: time.sleep(random.uniform(0.05, 0.1))
-        last_global_claim_ts = time.time()
+    current_speed = session_data["speed"]
 
+    # الدوران العشوائي للرسائل (ميزة جديدة تم الحفاظ عليها)
     msg_list = [m.strip() for m in session_data["message"].split('||') if m.strip()]
     custom_msg = random.choice(msg_list) if msg_list else "استلمت التكت."
     
-    res = safe_post(username, f"{API}/{ch_id}/messages", {"content": custom_msg}, session_data["speed"], is_claim=True)
+    now_ts = time.time()
+    if session_data["last_sent_text"] == custom_msg and (now_ts - session_data["last_sent_time"] < 2.0):
+        custom_msg += "᠎" * random.randint(1, 2)
+    session_data["last_sent_text"] = custom_msg
+    session_data["last_sent_time"] = now_ts
+
+    res = safe_post(username, f"{API}/{ch_id}/messages", {"content": custom_msg}, current_speed, is_claim=True)
     
     with session_data["lock"]:
         if res and res.status_code in [200, 201]:
             log_ticket(username, ch_id)
+            ticket_url = f"https://discord.com/channels/{SERVER_ID}/{ch_id}"
+            log_text = f"✨ استلمت **#{name}** | <a href='{ticket_url}' target='_blank'>الرابط</a>"
+            
             t_time = datetime.now().strftime("%I:%M %p")
             cat_type = "administrative" if str(parent_id) == CATEGORY_IDS["administrative"] else "players" if str(parent_id) == CATEGORY_IDS["players"] else "factions"
             session_data["claimed_history"].append({"id": ch_id, "name": name, "time": t_time, "cat": cat_type})
             if len(session_data["claimed_history"]) > 20: session_data["claimed_history"].pop(0)
-            session_data["logs"].insert(0, f"✨ استلمت **#{name}**")
+            
+            session_data["logs"].insert(0, f"{log_text} ({current_count}/{max_lim})")
+            if len(session_data["logs"]) > 20: session_data["logs"].pop()
             save_db(username)
+            
+            if current_count >= max_lim:
+                session_data["status"] = "stopped"
+                session_data["logs"].insert(0, "🛑 تم بلوغ الحد الأقصى، توقف النظام.")
         else:
             session_data["count"] = max(0, session_data["count"] - 1)
             session_data["total_lifetime"] = max(0, session_data["total_lifetime"] - 1)
+            session_data["logs"].insert(0, f"<span style='color: #ef4444;'>❌ تعذر استلام #{name}</span>")
+            
         if ch_id in session_data["active_tickets"]: session_data["active_tickets"].remove(ch_id)
 
 def run_discord_bot(username):
     d = user_sessions[username]
     token = d["token"]
+    d["logs"].insert(0, "🚀 تم تفعيل النظام الكلاسيكي السريع جداً...")
     def on_message(ws, msg):
         if d["status"] == "stopped" or d["is_suspended"]: ws.close(); return
         if d["status"] == "paused": return
@@ -226,7 +247,7 @@ def run_discord_bot(username):
     while d["status"] in ["running", "paused"] and not d["is_suspended"]:
         try: websocket.WebSocketApp("wss://gateway.discord.gg/?v=9&encoding=json", on_open=on_open, on_message=on_message).run_forever()
         except: time.sleep(2)
-# ================= HTML TEMPLATES =================
+# ================= واجهات HTML =================
 
 MANIFEST_JSON = """
 {
@@ -298,7 +319,7 @@ LOGIN_HTML = """
     </div>
 
     <script>
-        let vaultData = localStorage.getItem("mr_vault_v3");
+        let vaultData = localStorage.getItem("mr_vault_v4");
         if (vaultData) {
             let data = JSON.parse(vaultData);
             document.getElementById("vault-name").innerText = "مرحباً " + data.u;
@@ -314,14 +335,14 @@ LOGIN_HTML = """
             let pin = document.getElementById("new-pin").value;
             if(!u || !p || pin.length !== 4) { alert("يرجى تعبئة جميع الحقول وتأكد أن الرمز 4 أرقام."); return; }
             
-            localStorage.setItem("mr_vault_v3", JSON.stringify({u: u, p: btoa(p), pin: pin}));
+            localStorage.setItem("mr_vault_v4", JSON.stringify({u: u, p: btoa(p), pin: pin}));
             document.getElementById("hidden-user").value = u;
             document.getElementById("hidden-pass").value = p;
             document.getElementById("hidden-form").submit();
         }
 
         function unlockVault() {
-            let data = JSON.parse(localStorage.getItem("mr_vault_v3"));
+            let data = JSON.parse(localStorage.getItem("mr_vault_v4"));
             let inputPin = document.getElementById("pin-input").value;
             
             if (inputPin === data.pin) {
@@ -335,7 +356,7 @@ LOGIN_HTML = """
         }
 
         function resetVault() {
-            localStorage.removeItem("mr_vault_v3");
+            localStorage.removeItem("mr_vault_v4");
             document.getElementById("vault-view").style.display = "none";
             document.getElementById("normal-view").style.display = "block";
         }
@@ -375,6 +396,7 @@ PANEL_HTML = """
         body.compact-mode .btn { padding: 8px; font-size: 12px; }
         body.compact-mode input, body.compact-mode select { padding: 6px; font-size: 11px; margin-bottom: 5px;}
         body.compact-mode .chart-container { height: 90px; }
+        body.compact-mode textarea { height: 40px; }
         
         .openbtn { font-size: 26px; cursor: pointer; background: rgba(0,0,0,0.6); color: white; border: 1px solid var(--prim); border-radius: 50%; width: 45px; height: 45px; position: fixed; top: 10px; left: 10px; z-index: 900; display: flex; align-items: center; justify-content: center;}
         .sidebar { height: 100%; width: 0; position: fixed; z-index: 1000; top: 0; right: 0; background-color: rgba(10, 15, 29, 0.98); backdrop-filter: blur(15px); overflow-x: hidden; transition: 0.4s; padding-top: 50px; text-align: right; border-left: 1px solid rgba(255,255,255,0.1); }
@@ -411,6 +433,8 @@ PANEL_HTML = """
         /* نافذة الإحصائيات (Modal) */
         .modal { display: none; position: fixed; z-index: 9999; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); justify-content: center; align-items: center; }
         .modal-content { background: #1e293b; padding: 20px; border-radius: 15px; text-align: center; width: 80%; border: 1px solid #3b82f6;}
+        
+        .log-box { background: #000; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 10px; height: 60px; overflow-y: auto; text-align: right; font-size: 11px; color: #94a3b8; margin-top: 5px; }
     </style>
 </head>
 <body class="{% if compact_mode %}compact-mode{% endif %}">
@@ -489,6 +513,8 @@ PANEL_HTML = """
                 <textarea name="custom_msg" placeholder="اكتب رسائلك وافصل بينها بـ || للدوران العشوائي">{{ message }}</textarea>
                 <button type="submit" class="btn btn-secondary">حفظ التغييرات السريعة 💾</button>
             </form>
+            
+            <div class="log-box" id="log_box">{% for item in logs %}<div>• {{ item | safe }}</div>{% else %}<div>النظام جاهز...</div>{% endfor %}</div>
         </div>
 
         <!-- شاشة ديسكورد المستنسخة -->
@@ -642,6 +668,11 @@ PANEL_HTML = """
                 document.title = `🚀 ${data.count}/${data.max_tickets} | M.R System`;
 
                 document.getElementById('count_disp').innerText = data.count + '/' + data.max_tickets;
+                
+                let logHtml = '';
+                data.logs.forEach(l => { logHtml += '<div>• ' + l + '</div>'; });
+                document.getElementById('log_box').innerHTML = logHtml || '<div>النظام جاهز...</div>';
+                
                 myChart.data.datasets[0].data = [data.count, data.max_tickets - data.count > 0 ? data.max_tickets - data.count : 0];
                 myChart.update();
 
@@ -652,7 +683,7 @@ PANEL_HTML = """
                 });
                 document.getElementById('ticket_list').innerHTML = tktsHtml;
             } catch(e) {}
-        }, 3000); 
+        }, 2000); 
     </script>
 </body>
 </html>
@@ -738,7 +769,7 @@ MASTER_HTML = """
 </html>
 """
 
-# ================= FLASK ROUTES =================
+# ================= مسارات الفلاسك (Flask Routes) =================
 
 @app.route('/')
 def index():
@@ -750,7 +781,7 @@ def login():
         username = request.form.get('username')
         password = request.form.get('password')
         
-        # الدخول كمدير عام
+        # الدخول كمدير عام (Master)
         if username == "Marshall" and password == "oopp00998":
             session['master'] = True
             return redirect(url_for('master'))
@@ -782,7 +813,7 @@ def panel():
     d = user_sessions[usr]
     if d["is_suspended"]: return redirect(url_for('logout'))
     theme_key = d.get("theme", "cyber_red")
-    return render_template_string(PANEL_HTML, username=usr, max_tickets=d["max_tickets"], count=d["count"], speed=d["speed"], message=d["message"], theme=theme_key, themes=THEMES, theme_data=THEMES[theme_key], ticket_filter=d["ticket_filter"], status=d["status"], compact_mode=d["compact_mode"])
+    return render_template_string(PANEL_HTML, username=usr, max_tickets=d["max_tickets"], count=d["count"], speed=d["speed"], message=d["message"], theme=theme_key, themes=THEMES, theme_data=THEMES[theme_key], ticket_filter=d["ticket_filter"], status=d["status"], compact_mode=d["compact_mode"], logs=d["logs"])
 
 @app.route('/api/status')
 def api_status():
@@ -793,7 +824,8 @@ def api_status():
     return json.dumps({
         "count": d["count"], "max_tickets": d["max_tickets"], "speed": d["speed"], 
         "status": d["status"], "is_suspended": d["is_suspended"], "history": visible_history, 
-        "broadcast_msg": global_settings["broadcast_msg"], "broadcast_id": global_settings["broadcast_id"]
+        "broadcast_msg": global_settings["broadcast_msg"], "broadcast_id": global_settings["broadcast_id"],
+        "logs": d["logs"]
     })
 
 @app.route('/api/viewing/<ch_id>')
@@ -857,7 +889,6 @@ def update_main():
         user_sessions[usr]["message"] = request.form.get('custom_msg', '').strip()
         try:
             user_sessions[usr]["max_tickets"] = int(request.form.get('max_tickets', 10))
-            # تقييد السرعة (تمنع الإداري من وضع سرعة أقل من حد الماستر)
             user_sessions[usr]["speed"] = max(float(request.form.get('custom_speed', 1.1)), global_settings["min_speed"])
         except: pass
         save_db(usr)
