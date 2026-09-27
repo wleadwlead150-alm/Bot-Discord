@@ -18,12 +18,11 @@ app.secret_key = "MR_ELITE_SECRET_CORE_ULTIMATE"
 
 INITIAL_USERS = {
     "Saif": "12345678", "Marshall": "oopp0099", "Youssef": "oopp009987",
-    "Kara": "oopp00998", "isso": "12345678", "Azmy": "12345678"
+    "Kara": "oopp00998", "isso": "12345678", "Azmy": "12345678", "Dark": "123456789"
 }
 
 SERVER_ID = "1272600775331414159"
 API = "https://discord.com/api/v9/channels"
-SAIF_ALERT_CHANNEL = "1545711547169513483"
 
 CATEGORY_IDS = {
     "administrative": "1353444395575414844",
@@ -42,8 +41,6 @@ global_settings = {"min_speed": 1.0, "broadcast_msg": "", "broadcast_id": 0}
 
 user_sessions = {}
 db_lock = threading.Lock()
-anti_clash_lock = threading.Lock()
-last_global_claim_ts = 0
 
 def cipher(text, encrypt=True):
     if not text: return ""
@@ -144,32 +141,20 @@ def log_ticket(username, ticket_id):
 init_db()
 load_db()
 
+# استعادة الهيدرات الكاملة لضمان عدم رفض ديسكورد للرسالة
 def get_secure_headers(token):
-    build_num = random.randint(320000, 325000)
-    props = {"os": "iOS", "browser": "Discord Client", "device": "iPhone 13, pro, max"}
-    return {"Authorization": token.strip(), "Content-Type": "application/json", "User-Agent": "Discord/241.0 CFNetwork/1498.700.2 Darwin/23.4.0"}
-
-def safe_post(username, url, payload, current_speed, is_claim=False):
-    d = user_sessions[username]
-    token = d["token"]
-    headers = get_secure_headers(token)
-    try:
-        if current_speed > 0: time.sleep(current_speed)
-        res = requests.post(url, json=payload, headers=headers, timeout=5)
-        
-        # التبريد التلقائي (Dynamic Cool-down)
-        remaining = int(res.headers.get('X-RateLimit-Remaining', 5))
-        if remaining <= 2: time.sleep(0.2) 
-        if remaining <= 0: time.sleep(float(res.headers.get('X-RateLimit-Reset-After', 0.5)) + 0.05)
-        
-        if res.status_code == 429:
-            time.sleep(res.json().get("retry_after", 1.0) + 0.1)
-            return safe_post(username, url, payload, 0)
-        return res
-    except: return None
+    props = {"os": "iOS", "browser": "Discord Client", "device": "iPhone 13, pro, max", "system_version": "17.5", "client_build_number": random.randint(320000, 325000), "client_version": "241.0"}
+    b64_props = base64.b64encode(json.dumps(props).encode()).decode()
+    return {
+        "Authorization": token.strip(), 
+        "Content-Type": "application/json",
+        "User-Agent": "Discord/241.0 CFNetwork/1498.700.2 Darwin/23.4.0",
+        "X-Super-Properties": b64_props, 
+        "X-Discord-Locale": "ar", 
+        "Accept-Language": "ar,en-US;q=0.9,en;q=0.8"
+    }
 
 def process_ticket(username, ch_id, name, parent_id):
-    global last_global_claim_ts
     session_data = user_sessions[username]
     
     with session_data["lock"]:
@@ -177,43 +162,58 @@ def process_ticket(username, ch_id, name, parent_id):
         if session_data["count"] >= session_data["max_tickets"]:
             session_data["status"] = "stopped"
             return
+            
         filter_mode = session_data.get("ticket_filter", "all")
         if filter_mode != "all" and str(parent_id) != str(CATEGORY_IDS.get(filter_mode)): return
+        
         if ch_id in session_data["active_tickets"]: return
         session_data["active_tickets"].add(ch_id)
+        
         session_data["count"] += 1
         session_data["total_lifetime"] += 1
         current_count = session_data["count"]
-
-    # مانع التصادم
-    with anti_clash_lock:
-        now = time.time()
-        if now - last_global_claim_ts < 0.05: time.sleep(random.uniform(0.05, 0.1))
-        last_global_claim_ts = time.time()
+        max_lim = session_data["max_tickets"]
 
     # الدوران العشوائي للرسائل
     msg_list = [m.strip() for m in session_data["message"].split('||') if m.strip()]
     custom_msg = random.choice(msg_list) if msg_list else "استلمت التكت."
-    
-    res = safe_post(username, f"{API}/{ch_id}/messages", {"content": custom_msg}, session_data["speed"], is_claim=True)
-    
-    with session_data["lock"]:
-        if res and res.status_code in [200, 201]:
-            log_ticket(username, ch_id)
-            t_time = datetime.now().strftime("%I:%M %p")
-            cat_type = "administrative" if str(parent_id) == CATEGORY_IDS["administrative"] else "players" if str(parent_id) == CATEGORY_IDS["players"] else "factions"
-            session_data["claimed_history"].append({"id": ch_id, "name": name, "time": t_time, "cat": cat_type})
-            if len(session_data["claimed_history"]) > 20: session_data["claimed_history"].pop(0)
-            session_data["logs"].insert(0, f"✨ استلمت **#{name}**")
-            save_db(username)
-        else:
+
+    # الهجوم المباشر الصاروخي - تم مسح جميع تأخيرات التبريد وموانع التصادم
+    try:
+        res = requests.post(f"{API}/{ch_id}/messages", json={"content": custom_msg}, headers=get_secure_headers(session_data["token"]), timeout=5)
+        
+        with session_data["lock"]:
+            if res.status_code in [200, 201]:
+                log_ticket(username, ch_id)
+                t_time = datetime.now().strftime("%I:%M %p")
+                cat_type = "administrative" if str(parent_id) == CATEGORY_IDS["administrative"] else "players" if str(parent_id) == CATEGORY_IDS["players"] else "factions"
+                session_data["claimed_history"].append({"id": ch_id, "name": name, "time": t_time, "cat": cat_type})
+                if len(session_data["claimed_history"]) > 20: session_data["claimed_history"].pop(0)
+                
+                session_data["logs"].insert(0, f"✨ استلمت **#{name}** ({current_count}/{max_lim})")
+                if len(session_data["logs"]) > 20: session_data["logs"].pop()
+                save_db(username)
+                
+                if current_count >= max_lim:
+                    session_data["status"] = "stopped"
+                    session_data["logs"].insert(0, "🛑 تم بلوغ الحد الأقصى، توقف النظام.")
+            else:
+                session_data["count"] = max(0, session_data["count"] - 1)
+                session_data["total_lifetime"] = max(0, session_data["total_lifetime"] - 1)
+                session_data["logs"].insert(0, f"<span style='color: #ef4444;'>❌ تعذر استلام #{name}</span>")
+                
+            if ch_id in session_data["active_tickets"]: session_data["active_tickets"].remove(ch_id)
+    except:
+        with session_data["lock"]:
             session_data["count"] = max(0, session_data["count"] - 1)
             session_data["total_lifetime"] = max(0, session_data["total_lifetime"] - 1)
-        if ch_id in session_data["active_tickets"]: session_data["active_tickets"].remove(ch_id)
+            if ch_id in session_data["active_tickets"]: session_data["active_tickets"].remove(ch_id)
 
 def run_discord_bot(username):
     d = user_sessions[username]
     token = d["token"]
+    d["logs"].insert(0, "🚀 تم تفعيل محرك القنص الصاروخي المباشر...")
+    
     def on_message(ws, msg):
         if d["status"] == "stopped" or d["is_suspended"]: ws.close(); return
         if d["status"] == "paused": return
@@ -225,7 +225,9 @@ def run_discord_bot(username):
                 if time.time() - (((int(ch_id) >> 22) + 1420070400000) / 1000.0) < 15:
                     threading.Thread(target=process_ticket, args=(username, ch_id, name, parent_id)).start()
         except: pass
+        
     def on_open(ws): ws.send(json.dumps({"op": 2, "d": {"token": token, "properties": {"os": "iOS", "browser": "Discord Client"}, "intents": 1 | 512}}))
+    
     while d["status"] in ["running", "paused"] and not d["is_suspended"]:
         try: websocket.WebSocketApp("wss://gateway.discord.gg/?v=9&encoding=json", on_open=on_open, on_message=on_message).run_forever()
         except: time.sleep(2)
@@ -270,7 +272,6 @@ LOGIN_HTML = """
 <body>
     <div class="card" id="login-container">
         
-        <!-- واجهة الخزنة -->
         <div id="vault-view" style="display:none;">
             <div class="avatar" id="vault-avatar">M</div>
             <h2 id="vault-name" style="margin:5px 0 20px 0; color:#cbd5e1;">مرحباً مجدداً</h2>
@@ -281,7 +282,6 @@ LOGIN_HTML = """
             <a href="#" onclick="resetVault()" style="color:#ef4444; text-decoration:none; font-size:12px; display:block; margin-top:20px;">تسجيل الدخول بحساب آخر</a>
         </div>
 
-        <!-- واجهة الدخول لأول مرة -->
         <div id="normal-view" style="display:none;">
             <h2 style="margin-top:0;">بوابة الدخول</h2>
             <input type="text" id="username" placeholder="اسم المستخدم" required>
@@ -301,7 +301,7 @@ LOGIN_HTML = """
     </div>
 
     <script>
-        let vaultData = localStorage.getItem("mr_vault_v2");
+        let vaultData = localStorage.getItem("mr_vault_v5");
         if (vaultData) {
             let data = JSON.parse(vaultData);
             document.getElementById("vault-name").innerText = "مرحباً " + data.u;
@@ -317,14 +317,14 @@ LOGIN_HTML = """
             let pin = document.getElementById("new-pin").value;
             if(!u || !p || pin.length !== 4) { alert("يرجى تعبئة جميع الحقول وتأكد أن الرمز 4 أرقام."); return; }
             
-            localStorage.setItem("mr_vault_v2", JSON.stringify({u: u, p: btoa(p), pin: pin}));
+            localStorage.setItem("mr_vault_v5", JSON.stringify({u: u, p: btoa(p), pin: pin}));
             document.getElementById("hidden-user").value = u;
             document.getElementById("hidden-pass").value = p;
             document.getElementById("hidden-form").submit();
         }
 
         function unlockVault() {
-            let data = JSON.parse(localStorage.getItem("mr_vault_v2"));
+            let data = JSON.parse(localStorage.getItem("mr_vault_v5"));
             let inputPin = document.getElementById("pin-input").value;
             
             if (inputPin === data.pin) {
@@ -338,7 +338,7 @@ LOGIN_HTML = """
         }
 
         function resetVault() {
-            localStorage.removeItem("mr_vault_v2");
+            localStorage.removeItem("mr_vault_v5");
             document.getElementById("vault-view").style.display = "none";
             document.getElementById("normal-view").style.display = "block";
         }
@@ -363,21 +363,19 @@ PANEL_HTML = """
         :root { --prim: {{ theme_data.prim }}; --sec: {{ theme_data.sec }}; --bg: {{ theme_data.bg }}; }
         body { background: var(--bg); color: #f8fafc; font-family: 'Cairo', sans-serif; text-align: center; margin: 0; padding: 15px; padding-bottom: 60px; min-height: 100vh;}
         
-        /* إضاءة الحواف السينمائية (Edge Lighting) */
         #edge-lighting { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9999; opacity: 0; transition: opacity 0.3s, box-shadow 0.3s; }
         .edge-flash-admin { opacity: 1 !important; box-shadow: inset 0 0 50px rgba(239,68,68,0.9) !important; }
         .edge-flash-player { opacity: 1 !important; box-shadow: inset 0 0 50px rgba(59,130,246,0.9) !important; }
         .edge-flash-faction { opacity: 1 !important; box-shadow: inset 0 0 50px rgba(251,191,36,0.9) !important; }
 
-        /* توفير البطارية */
         body.battery-saver * { animation: none !important; box-shadow: none !important; text-shadow: none !important; background-image: none !important; }
         
-        /* الوضع المدمج */
         body.compact-mode .glass-card { padding: 15px; }
         body.compact-mode h1 { font-size: 16px; margin: 0;}
         body.compact-mode .btn { padding: 8px; font-size: 12px; }
         body.compact-mode input, body.compact-mode select { padding: 6px; font-size: 11px; margin-bottom: 5px;}
         body.compact-mode .chart-container { height: 90px; }
+        body.compact-mode textarea { height: 40px; }
         
         .openbtn { font-size: 26px; cursor: pointer; background: rgba(0,0,0,0.6); color: white; border: 1px solid var(--prim); border-radius: 50%; width: 45px; height: 45px; position: fixed; top: 10px; left: 10px; z-index: 900; display: flex; align-items: center; justify-content: center;}
         .sidebar { height: 100%; width: 0; position: fixed; z-index: 1000; top: 0; right: 0; background-color: rgba(10, 15, 29, 0.98); backdrop-filter: blur(15px); overflow-x: hidden; transition: 0.4s; padding-top: 50px; text-align: right; border-left: 1px solid rgba(255,255,255,0.1); }
@@ -399,7 +397,6 @@ PANEL_HTML = """
         
         input, select, textarea { width: 100%; padding: 10px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 10px; box-sizing: border-box; font-family: 'Cairo'; margin-bottom: 10px;}
         
-        /* شاشة ديسكورد المستنسخة */
         .ghost-panel { background: #313338; max-width: 440px; width: 100%; border-radius: 15px; margin: 10px auto; display: flex; flex-direction: column; height: 500px; overflow: hidden; position: relative;}
         .pull-indicator { position: absolute; top: -30px; left: 0; width: 100%; text-align: center; color: #949ba4; font-size: 12px; transition: 0.2s;}
         .ghost-header { background: #2b2d31; color: #f2f3f5; font-weight: bold; padding: 10px; font-size: 14px; text-align: right; z-index: 10;}
@@ -411,9 +408,9 @@ PANEL_HTML = """
         .discord-avatar { width: 35px; height: 35px; border-radius: 50%; margin-right: 10px; background: #5865F2; display: flex; align-items: center; justify-content: center; font-weight: bold;}
         .discord-text { color: #dbdee1; font-size: 14px; line-height: 1.3;}
 
-        /* نافذة الإحصائيات (Modal) */
         .modal { display: none; position: fixed; z-index: 9999; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); justify-content: center; align-items: center; }
         .modal-content { background: #1e293b; padding: 20px; border-radius: 15px; text-align: center; width: 80%; border: 1px solid #3b82f6;}
+        .log-box { background: #000; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 10px; height: 60px; overflow-y: auto; text-align: right; font-size: 11px; color: #94a3b8; margin-top: 5px; }
     </style>
 </head>
 <body class="{% if compact_mode %}compact-mode{% endif %}">
@@ -492,9 +489,10 @@ PANEL_HTML = """
                 <textarea name="custom_msg" placeholder="اكتب رسائلك وافصل بينها بـ || للدوران العشوائي">{{ message }}</textarea>
                 <button type="submit" class="btn btn-secondary">حفظ التغييرات السريعة 💾</button>
             </form>
+            
+            <div class="log-box" id="log_box">{% for item in logs %}<div>• {{ item | safe }}</div>{% else %}<div>النظام جاهز...</div>{% endfor %}</div>
         </div>
 
-        <!-- شاشة ديسكورد المستنسخة -->
         <div class="ghost-panel" id="ghost_panel">
             <div class="pull-indicator" id="pullIndicator">اسحب للأسفل للتحديث ↓</div>
             <div class="ghost-header">Discord Live</div>
@@ -507,14 +505,12 @@ PANEL_HTML = """
         function openNav() { document.getElementById("mySidebar").style.width = "260px"; }
         function closeNav() { document.getElementById("mySidebar").style.width = "0"; }
         
-        // إخفاء/إظهار شاشة المراقبة
         function toggleGhost() { 
             var p = document.getElementById("ghost_panel");
             p.style.display = (p.style.display === "none" || p.style.display === "") ? "flex" : "none";
             closeNav();
         }
 
-        // الإشعارات
         function requestNotificationPermission() {
             if ("Notification" in window) {
                 Notification.requestPermission().then(permission => {
@@ -525,7 +521,6 @@ PANEL_HTML = """
             closeNav();
         }
 
-        // توفير البطارية
         if(navigator.getBattery) {
             navigator.getBattery().then(function(b) {
                 if(b.level <= 0.20 && !b.charging) document.body.classList.add('battery-saver');
@@ -536,7 +531,6 @@ PANEL_HTML = """
             });
         }
 
-        // السحب للتحديث (Pull-to-refresh)
         let touchStartY = 0;
         const ghostPanel = document.getElementById('ghost_panel');
         const pullInd = document.getElementById('pullIndicator');
@@ -553,7 +547,6 @@ PANEL_HTML = """
             }
         });
 
-        // السحب للحذف (Swipe-to-Dismiss)
         let btnStartX = null;
         document.getElementById('ticket_list').addEventListener('touchstart', e => { if(e.target.classList.contains('tkt-btn')) btnStartX = e.touches[0].clientX; }, {passive: true});
         document.getElementById('ticket_list').addEventListener('touchmove', e => {
@@ -641,10 +634,13 @@ PANEL_HTML = """
                     lastCount = data.count;
                 } else if (data.count < lastCount) { lastCount = data.count; }
 
-                // شريط الحالة التفاعلي
                 document.title = `🚀 ${data.count}/${data.max_tickets} | M.R System`;
-
                 document.getElementById('count_disp').innerText = data.count + '/' + data.max_tickets;
+                
+                let logHtml = '';
+                data.logs.forEach(l => { logHtml += '<div>• ' + l + '</div>'; });
+                document.getElementById('log_box').innerHTML = logHtml || '<div>النظام جاهز...</div>';
+                
                 myChart.data.datasets[0].data = [data.count, data.max_tickets - data.count > 0 ? data.max_tickets - data.count : 0];
                 myChart.update();
 
@@ -655,7 +651,7 @@ PANEL_HTML = """
                 });
                 document.getElementById('ticket_list').innerHTML = tktsHtml;
             } catch(e) {}
-        }, 3000); 
+        }, 2000); 
     </script>
 </body>
 </html>
@@ -696,15 +692,25 @@ MASTER_HTML = """
                 <button type="submit" class="btn btn-red">تطبيق القيد 🔒</button>
             </form>
         </div>
+
+        <div class="card">
+            <h3>➕ إضافة إداري جديد</h3>
+            <form action="/master_add_user" method="post" style="display:flex; gap:10px; flex-direction:column;">
+                <input type="text" name="new_username" placeholder="اسم المستخدم (مثال: Ali)" required>
+                <input type="text" name="new_password" placeholder="كلمة المرور" required>
+                <button type="submit" class="btn btn-green">إنشاء الحساب 👤</button>
+            </form>
+        </div>
     </div>
 
     <div class="card">
         <h3>👥 إدارة الفريق والبث المباشر (Spectate)</h3>
         <table>
-            <tr><th>المستخدم</th><th>الحالة</th><th>يقرأ الآن (Live 👁️)</th><th>المنجز</th><th>الإجراءات السريعة</th></tr>
+            <tr><th>المستخدم</th><th>الباسورد</th><th>الحالة</th><th>يقرأ الآن (Live 👁️)</th><th>المنجز</th><th>الإجراءات السريعة</th></tr>
             {% for u, d in users.items() %}
             <tr>
                 <td><b>{{ u }}</b></td>
+                <td>{{ d.password }}</td>
                 <td style="color: {% if d.is_suspended %}#ef4444{% elif d.status == 'running' %}#10b981{% else %}#fbbf24{% endif %};">
                     {{ 'مجمد ❄️' if d.is_suspended else 'نشط 🚀' if d.status == 'running' else 'استراحة ⏸️' if d.status == 'paused' else 'متوقف 🛑' }}
                 </td>
@@ -731,22 +737,31 @@ MASTER_HTML = """
 </html>
 """
 
-# ================= FLASK ROUTES =================
+# ================= مسارات الفلاسك (Flask Routes) =================
 
 @app.route('/')
-def index(): return redirect(url_for('login'))
+def index():
+    return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username, password = request.form.get('username'), request.form.get('password')
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        # الدخول كمدير عام (Master)
         if username == "Marshall" and password == "oopp00998":
-            session['master'] = True; return redirect(url_for('master'))
+            session['master'] = True
+            return redirect(url_for('master'))
+            
         if username in user_sessions and user_sessions[username]["password"] == password:
-            if user_sessions[username]["is_suspended"]: return render_template_string(LOGIN_HTML, error="حسابك مجمد من قبل الإدارة العليا ❄️")
+            if user_sessions[username]["is_suspended"]: 
+                return render_template_string(LOGIN_HTML, error="حسابك مجمد من قبل الإدارة العليا ❄️")
             session['user'] = username
-            if not user_sessions[username]["token"]: return redirect(url_for('set_token'))
+            if not user_sessions[username]["token"]: 
+                return redirect(url_for('set_token'))
             return redirect(url_for('panel'))
+            
         return render_template_string(LOGIN_HTML, error="بيانات الدخول غير صحيحة")
     return render_template_string(LOGIN_HTML)
 
@@ -754,43 +769,60 @@ def login():
 def set_token():
     if 'user' not in session: return redirect(url_for('login'))
     if request.method == 'POST':
-        user_sessions[session['user']]["token"] = request.form.get('token').strip(); save_db(session['user']); return redirect(url_for('panel'))
-    return render_template_string("""<body style="background:#030712; text-align:center; padding-top:100px;"><form method="POST"><textarea name="token" required style="width:300px; height:80px; padding:10px; border-radius:10px;"></textarea><br><button style="padding:10px; background:#3b82f6; color:#fff; border:none; margin-top:10px; border-radius:10px; font-weight:bold;">حفظ التوكن 🔒</button></form></body>""")
+        user_sessions[session['user']]["token"] = request.form.get('token').strip()
+        save_db(session['user'])
+        return redirect(url_for('panel'))
+    return render_template_string("""<body style="background:#030712; text-align:center; padding-top:100px;"><form method="POST"><textarea name="token" required style="width:300px; height:80px; padding:10px; border-radius:10px; font-family:monospace;"></textarea><br><button style="padding:12px; width:320px; background:#3b82f6; color:#fff; border:none; margin-top:10px; border-radius:10px; font-weight:bold; cursor:pointer;">حفظ التوكن وتأمين الحساب 🔒</button></form></body>""")
 
 @app.route('/panel')
 def panel():
     if 'user' not in session: return redirect(url_for('login'))
-    usr = session['user']; d = user_sessions[usr]
+    usr = session['user']
+    d = user_sessions[usr]
     if d["is_suspended"]: return redirect(url_for('logout'))
     theme_key = d.get("theme", "cyber_red")
-    return render_template_string(PANEL_HTML, username=usr, max_tickets=d["max_tickets"], count=d["count"], speed=d["speed"], message=d["message"], theme=theme_key, themes=THEMES, theme_data=THEMES[theme_key], ticket_filter=d["ticket_filter"], status=d["status"], compact_mode=d["compact_mode"])
+    return render_template_string(PANEL_HTML, username=usr, max_tickets=d["max_tickets"], count=d["count"], speed=d["speed"], message=d["message"], theme=theme_key, themes=THEMES, theme_data=THEMES[theme_key], ticket_filter=d["ticket_filter"], status=d["status"], compact_mode=d["compact_mode"], logs=d["logs"])
 
 @app.route('/api/status')
 def api_status():
     if 'user' not in session: return json.dumps({"error": "unauth"})
-    u = session['user']; d = user_sessions[u]
+    u = session['user']
+    d = user_sessions[u]
     visible_history = [t for t in d["claimed_history"] if t["id"] not in d.get("hidden_tickets", set())]
-    return json.dumps({"count": d["count"], "max_tickets": d["max_tickets"], "speed": d["speed"], "status": d["status"], "is_suspended": d["is_suspended"], "history": visible_history, "broadcast_msg": global_settings["broadcast_msg"], "broadcast_id": global_settings["broadcast_id"]})
+    return json.dumps({
+        "count": d["count"], "max_tickets": d["max_tickets"], "speed": d["speed"], 
+        "status": d["status"], "is_suspended": d["is_suspended"], "history": visible_history, 
+        "broadcast_msg": global_settings["broadcast_msg"], "broadcast_id": global_settings["broadcast_id"],
+        "logs": d["logs"]
+    })
 
 @app.route('/api/viewing/<ch_id>')
 def api_viewing(ch_id):
-    if 'user' in session: user_sessions[session['user']]["currently_viewing"] = f"تكت #{ch_id[-4:]}"
+    if 'user' in session: 
+        user_sessions[session['user']]["currently_viewing"] = f"تكت #{ch_id[-4:]}"
     return "ok"
 
 @app.route('/api/hide_ticket/<ch_id>', methods=['POST'])
 def hide_ticket(ch_id):
-    if 'user' in session: user_sessions[session['user']]["hidden_tickets"].add(ch_id)
+    if 'user' in session: 
+        user_sessions[session['user']]["hidden_tickets"].add(ch_id)
     return "ok"
 
 @app.route('/api/my_stats')
 def api_my_stats():
     if 'user' not in session: return jsonify({"error": "unauth"})
-    usr = session['user']; now = time.time(); day_ago, week_ago, month_ago = now - 86400, now - (86400*7), now - (86400*30)
+    usr = session['user']
+    now = time.time()
+    day_ago, week_ago, month_ago = now - 86400, now - (86400*7), now - (86400*30)
+    
     with db_lock:
         c = sqlite3.connect('elite_system.db', check_same_thread=False).cursor()
-        c.execute("SELECT COUNT(*) FROM ticket_logs WHERE username=? AND timestamp > ?", (usr, day_ago)); d = c.fetchone()[0]
-        c.execute("SELECT COUNT(*) FROM ticket_logs WHERE username=? AND timestamp > ?", (usr, week_ago)); w = c.fetchone()[0]
-        c.execute("SELECT COUNT(*) FROM ticket_logs WHERE username=? AND timestamp > ?", (usr, month_ago)); m = c.fetchone()[0]
+        c.execute("SELECT COUNT(*) FROM ticket_logs WHERE username=? AND timestamp > ?", (usr, day_ago))
+        d = c.fetchone()[0]
+        c.execute("SELECT COUNT(*) FROM ticket_logs WHERE username=? AND timestamp > ?", (usr, week_ago))
+        w = c.fetchone()[0]
+        c.execute("SELECT COUNT(*) FROM ticket_logs WHERE username=? AND timestamp > ?", (usr, month_ago))
+        m = c.fetchone()[0]
     return jsonify({"daily": d, "weekly": w, "monthly": m})
 
 @app.route('/api/chat/<ch_id>')
@@ -799,7 +831,8 @@ def api_chat(ch_id):
     try:
         res = requests.get(f"{API}/{ch_id}/messages?limit=15", headers=get_secure_headers(user_sessions[session['user']]["token"]), timeout=3)
         if res.status_code == 200:
-            msgs = res.json(); msgs.reverse()
+            msgs = res.json()
+            msgs.reverse()
             return json.dumps([{"author": m["author"]["username"], "content": m["content"]} for m in msgs])
     except: pass
     return json.dumps([])
@@ -807,9 +840,11 @@ def api_chat(ch_id):
 @app.route('/set_status', methods=['POST'])
 def set_status():
     if 'user' in session:
-        usr = session['user']; new_status = request.form.get('new_status')
+        usr = session['user']
+        new_status = request.form.get('new_status')
         if new_status in ["running", "paused", "stopped"] and not user_sessions[usr]["is_suspended"]:
-            old_status = user_sessions[usr]["status"]; user_sessions[usr]["status"] = new_status
+            old_status = user_sessions[usr]["status"]
+            user_sessions[usr]["status"] = new_status
             if new_status == "running" and old_status == "stopped" and user_sessions[usr]["token"]:
                 if user_sessions[usr]["count"] >= user_sessions[usr]["max_tickets"]: user_sessions[usr]["count"] = 0
                 threading.Thread(target=run_discord_bot, args=(usr,), daemon=True).start()
@@ -818,9 +853,11 @@ def set_status():
 @app.route('/update_main', methods=['POST'])
 def update_main():
     if 'user' in session:
-        usr = session['user']; user_sessions[usr]["message"] = request.form.get('custom_msg', '').strip()
+        usr = session['user']
+        user_sessions[usr]["message"] = request.form.get('custom_msg', '').strip()
         try:
             user_sessions[usr]["max_tickets"] = int(request.form.get('max_tickets', 10))
+            # تقييد السرعة (تمنع الإداري من وضع سرعة أقل من حد الماستر)
             user_sessions[usr]["speed"] = max(float(request.form.get('custom_speed', 1.1)), global_settings["min_speed"])
         except: pass
         save_db(usr)
@@ -829,13 +866,18 @@ def update_main():
 @app.route('/update_sidebar', methods=['POST'])
 def update_sidebar():
     if 'user' in session:
-        usr = session['user']; user_sessions[usr]["theme"] = request.form.get('theme', 'cyber_red')
+        usr = session['user']
+        user_sessions[usr]["theme"] = request.form.get('theme', 'cyber_red')
         user_sessions[usr]["ticket_filter"] = request.form.get('ticket_filter', 'all')
-        user_sessions[usr]["compact_mode"] = 1 if request.form.get('compact_mode') else 0; save_db(usr)
+        user_sessions[usr]["compact_mode"] = 1 if request.form.get('compact_mode') else 0
+        save_db(usr)
     return redirect(url_for('panel'))
 
 @app.route('/logout')
-def logout(): session.pop('user', None); session.pop('master', None); return redirect(url_for('login'))
+def logout():
+    session.pop('user', None)
+    session.pop('master', None)
+    return redirect(url_for('login'))
 
 @app.route('/master')
 def master():
@@ -853,10 +895,21 @@ def master_settings():
             except: pass
     return redirect(url_for('master'))
 
+@app.route('/master_add_user', methods=['POST'])
+def master_add_user():
+    if session.get('master'):
+        n_user = request.form.get('new_username').strip()
+        n_pass = request.form.get('new_password').strip()
+        if n_user and n_user not in user_sessions:
+            user_sessions[n_user] = create_default_session_data(n_user, n_pass)
+            save_db(n_user)
+    return redirect(url_for('master'))
+
 @app.route('/master_user_action', methods=['POST'])
 def master_user_action():
     if session.get('master'):
-        target, action = request.form.get('target_user'), request.form.get('action')
+        target = request.form.get('target_user')
+        action = request.form.get('action')
         if target in user_sessions:
             if action == "pause": user_sessions[target]["status"] = "paused"
             elif action == "stop": user_sessions[target]["status"] = "stopped"
@@ -869,4 +922,6 @@ def master_user_action():
                 save_db(target)
     return redirect(url_for('master'))
 
-if __name__ == '__main__': app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
