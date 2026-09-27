@@ -14,7 +14,7 @@ from io import StringIO
 from flask import Flask, render_template_string, request, redirect, url_for, session, make_response, jsonify
 
 app = Flask(__name__)
-app.secret_key = "MR_ELITE_SECRET_CORE_V99_FIXED"
+app.secret_key = "MR_ELITE_SECRET_CORE_V99_FIXED_FINAL"
 
 # الحسابات الافتراضية
 INITIAL_USERS = {
@@ -135,22 +135,48 @@ def save_db(uname):
 init_db()
 load_db()
 
-# ✅ تحديث حماية ديسكورد الجديدة (Shadow Ban Bypass)
+# ================= حماية ديسكورد الجديدة =================
 def get_secure_headers(token):
-    props = {"os": "iOS", "browser": "Discord Client", "device": "iPhone 13, pro, max", "system_version": "17.5", "client_build_number": 335000, "client_version": "245.0"}
-    b64_props = base64.b64encode(json.dumps(props).encode()).decode()
+    # تنكر كامل كمتصفح جوجل كروم على ويندوز 10 لمنع اكتشاف البوت
+    props = {
+        "os": "Windows",
+        "browser": "Chrome",
+        "device": "",
+        "system_version": "10",
+        "browser_user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "browser_version": "120.0.0.0",
+        "os_version": "10",
+        "referrer": "",
+        "referring_domain": "",
+        "referring_domain_current": "",
+        "release_channel": "stable",
+        "client_build_number": 250000,
+        "client_event_source": None
+    }
+    b64_props = base64.b64encode(json.dumps(props, separators=(',', ':')).encode()).decode()
     return {
-        "Authorization": token.strip(), "Content-Type": "application/json",
-        "User-Agent": "Discord/245.0 CFNetwork/1498.700.2 Darwin/23.4.0",
-        "X-Super-Properties": b64_props, "X-Discord-Locale": "ar", "Accept-Language": "ar,en-US;q=0.9,en;q=0.8"
+        "Authorization": token.strip(),
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "X-Super-Properties": b64_props,
+        "X-Discord-Locale": "ar",
+        "Accept-Language": "ar,en-US;q=0.9,en;q=0.8",
+        "Origin": "https://discord.com",
+        "Referer": "https://discord.com/channels/@me"
     }
 
 def safe_post(username, url, payload, current_speed, is_claim=False):
     d = user_sessions[username]
     token = d["token"]
     headers = get_secure_headers(token)
+    
+    # تأخير وهمي بسيط لتفادي حظر السرعة الزائدة من ديسكورد
+    if current_speed < 0.3:
+        time.sleep(0.35)
+    else:
+        time.sleep(current_speed)
+        
     try:
-        if current_speed > 0: time.sleep(current_speed)
         res = requests.post(url, json=payload, headers=headers, timeout=5)
         remaining = int(res.headers.get('X-RateLimit-Remaining', 5))
         if remaining <= 0: 
@@ -159,7 +185,7 @@ def safe_post(username, url, payload, current_speed, is_claim=False):
         if res.status_code == 429:
             retry_after = res.json().get("retry_after", 1.0)
             time.sleep(retry_after + 0.1)
-            return safe_post(username, url, payload, 0)
+            return safe_post(username, url, payload, 0.5)
         return res
     except: return None
 
@@ -194,8 +220,8 @@ def process_ticket(username, ch_id, name, parent_id):
     session_data["last_sent_text"] = custom_msg
     session_data["last_sent_time"] = now_ts
 
-    # ✅ توليد Nonce زمني لمنع ديسكورد من حظر الرسالة بصمت
-    nonce = str((int(time.time()) * 1000 - 1420070400000) << 22)
+    # تشفير ديسكورد الزمني (Nonce) لمنع الحظر الصامت للرسائل
+    nonce = str((int(time.time() * 1000) - 1420070400000) << 22)
     payload = {"content": custom_msg, "nonce": nonce}
 
     res = safe_post(username, f"{API}/{ch_id}/messages", payload, current_speed, is_claim=True)
@@ -212,7 +238,7 @@ def process_ticket(username, ch_id, name, parent_id):
             if username == "Saif":
                 alert_payload = {
                     "content": f"💎 **إشعار الإدارة** 💎\nالإداري **{username}** استلم تذكرة ✅\n🎫 `#{name}`\n🔗 {ticket_url}",
-                    "nonce": str((int(time.time()) * 1000 - 1420070400000) << 22)
+                    "nonce": str((int(time.time() * 1000) - 1420070400000) << 22)
                 }
                 threading.Thread(target=safe_post, args=(username, f"{API}/{SAIF_ALERT_CHANNEL}/messages", alert_payload, 0)).start()
 
@@ -265,7 +291,7 @@ def run_discord_bot(username):
         except: pass
 
     def on_open(ws):
-        ws.send(json.dumps({"op": 2, "d": {"token": token, "properties": {"os": "iOS", "browser": "Discord Client", "device": "iPhone"}, "intents": 1 | 512}}))
+        ws.send(json.dumps({"op": 2, "d": {"token": token, "properties": {"os": "Windows", "browser": "Chrome", "device": ""}, "intents": 1 | 512}}))
 
     while d["status"] in ["running", "paused"] and not d["banned_secure"]:
         try:
@@ -296,6 +322,7 @@ LANDING_HTML = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2202/2202112.png">
     <title>M.R COMMAND CENTER</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&display=swap');
@@ -303,7 +330,7 @@ LANDING_HTML = """
         .glitch-wrapper { position: relative; text-align: center; }
         h1 { font-size: 3.5rem; margin: 0; letter-spacing: 4px; color: #f8fafc; text-shadow: 0 0 20px rgba(255,255,255,0.2); }
         h3 { font-size: 1.2rem; color: #94a3b8; margin-top: 10px; letter-spacing: 12px; font-weight: 400; text-transform: uppercase;}
-        .red-btn { margin-top: 50px; padding: 18px 50px; background: transparent; border: 2px solid #ef4444; color: #ef4444; font-size: 1.2rem; font-weight: 700; text-transform: uppercase; letter-spacing: 3px; text-decoration: none; border-radius: 8px; transition: all 0.3s ease; cursor: pointer; }
+        .red-btn { margin-top: 50px; padding: 18px 50px; background: transparent; border: 2px solid #ef4444; color: #ef4444; font-size: 1.2rem; font-weight: 700; text-transform: uppercase; letter-spacing: 3px; text-decoration: none; border-radius: 8px; transition: all 0.3s ease; box-shadow: 0 0 15px rgba(239,68,68,0.2); cursor: pointer; }
         .red-btn:hover { background: #ef4444; color: #fff; box-shadow: 0 0 40px rgba(239,68,68,0.8); transform: scale(1.05); }
     </style>
 </head>
@@ -365,7 +392,7 @@ LOGIN_HTML = """
         </form>
     </div>
     <script>
-        let vaultData = localStorage.getItem("mr_vault_v99");
+        let vaultData = localStorage.getItem("mr_vault_v100");
         if (vaultData) {
             let data = JSON.parse(vaultData);
             document.getElementById("vault-name").innerText = "مرحباً " + data.u;
@@ -379,13 +406,13 @@ LOGIN_HTML = """
             let p = document.getElementById("password").value;
             let pin = document.getElementById("new-pin").value;
             if(!u || !p || pin.length !== 4) { alert("يرجى تعبئة جميع الحقول وتأكد أن الرمز 4 أرقام."); return; }
-            localStorage.setItem("mr_vault_v99", JSON.stringify({u: u, p: btoa(p), pin: pin}));
+            localStorage.setItem("mr_vault_v100", JSON.stringify({u: u, p: btoa(p), pin: pin}));
             document.getElementById("hidden-user").value = u;
             document.getElementById("hidden-pass").value = p;
             document.getElementById("hidden-form").submit();
         }
         function unlockVault() {
-            let data = JSON.parse(localStorage.getItem("mr_vault_v99"));
+            let data = JSON.parse(localStorage.getItem("mr_vault_v100"));
             let inputPin = document.getElementById("pin-input").value;
             if (inputPin === data.pin) {
                 document.getElementById("hidden-user").value = data.u;
@@ -397,7 +424,7 @@ LOGIN_HTML = """
             }
         }
         function resetVault() {
-            localStorage.removeItem("mr_vault_v99");
+            localStorage.removeItem("mr_vault_v100");
             document.getElementById("vault-view").style.display = "none";
             document.getElementById("normal-view").style.display = "block";
         }
@@ -413,6 +440,7 @@ PANEL_HTML = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2202/2202112.png">
     <title>M.R Elite Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
