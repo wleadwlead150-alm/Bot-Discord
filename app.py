@@ -18,7 +18,7 @@ app.secret_key = "MR_ELITE_SECRET_CORE_ULTIMATE"
 
 INITIAL_USERS = {
     "Saif": "12345678", "Marshall": "oopp0099", "Youssef": "oopp009987",
-    "Kara": "oopp00998", "isso": "12345678", "Azmy": "12345678"
+    "Kara": "oopp00998", "isso": "12345678", "Azmy": "12345678" "Dark": "123456789",
 }
 
 SERVER_ID = "1272600775331414159"
