@@ -14,7 +14,7 @@ from io import StringIO
 from flask import Flask, render_template_string, request, redirect, url_for, session, make_response, jsonify
 
 app = Flask(__name__)
-app.secret_key = "MR_ELITE_SECRET_CORE_V101"
+app.secret_key = "MR_ELITE_SECRET_CORE_ULTIMATE"
 
 INITIAL_USERS = {
     "Saif": "12345678", "Marshall": "oopp0099", "Youssef": "oopp009987",
@@ -33,7 +33,9 @@ CATEGORY_IDS = {
 
 THEMES = {
     "cyber_red": {"name": "أحمر Cyberpunk", "prim": "#dc2626", "sec": "#7f1d1d", "bg": "#170505"},
-    "lynwood": {"name": "أزرق Lynwood Police", "prim": "#2563eb", "sec": "#1e3a8a", "bg": "#0a0f1d"}
+    "lynwood": {"name": "أزرق Lynwood Police", "prim": "#2563eb", "sec": "#1e3a8a", "bg": "#0a0f1d"},
+    "neon_purple": {"name": "بنفسجي Neon", "prim": "#9333ea", "sec": "#4c1d95", "bg": "#0f0518"},
+    "stealth_dark": {"name": "أسود شبحي", "prim": "#475569", "sec": "#1e293b", "bg": "#020617"}
 }
 
 global_settings = {"min_speed": 1.0, "broadcast_msg": "", "broadcast_id": 0}
@@ -73,6 +75,7 @@ def init_db():
                       count INTEGER, total_lifetime INTEGER, theme TEXT, is_suspended INTEGER DEFAULT 0, compact_mode INTEGER DEFAULT 0)''')
         c.execute('''CREATE TABLE IF NOT EXISTS ticket_logs
                      (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, ticket_id TEXT, timestamp REAL)''')
+        
         c.execute("PRAGMA table_info(users)")
         existing_cols = [col[1] for col in c.fetchall()]
         if "is_suspended" not in existing_cols: c.execute("ALTER TABLE users ADD COLUMN is_suspended INTEGER DEFAULT 0")
@@ -156,9 +159,9 @@ def safe_post(username, url, payload, current_speed, is_claim=False):
         
         # التبريد التلقائي (Dynamic Cool-down)
         remaining = int(res.headers.get('X-RateLimit-Remaining', 5))
-        if remaining <= 2: time.sleep(0.2) # إضافة 0.2 ثانية تبريد إذا اقترب الحظر
-        
+        if remaining <= 2: time.sleep(0.2) 
         if remaining <= 0: time.sleep(float(res.headers.get('X-RateLimit-Reset-After', 0.5)) + 0.05)
+        
         if res.status_code == 429:
             time.sleep(res.json().get("retry_after", 1.0) + 0.1)
             return safe_post(username, url, payload, 0)
@@ -182,29 +185,22 @@ def process_ticket(username, ch_id, name, parent_id):
         session_data["total_lifetime"] += 1
         current_count = session_data["count"]
 
-    # مانع التصادم بين الإداريين (Anti-Clash System)
+    # مانع التصادم
     with anti_clash_lock:
         now = time.time()
         if now - last_global_claim_ts < 0.05: time.sleep(random.uniform(0.05, 0.1))
         last_global_claim_ts = time.time()
 
-    # الدوران العشوائي للرسائل (Message Rotation)
+    # الدوران العشوائي للرسائل
     msg_list = [m.strip() for m in session_data["message"].split('||') if m.strip()]
     custom_msg = random.choice(msg_list) if msg_list else "استلمت التكت."
     
-    now_ts = time.time()
-    if session_data["last_sent_text"] == custom_msg and (now_ts - session_data["last_sent_time"] < 2.0):
-        custom_msg += "᠎" * random.randint(1, 2)
-    session_data["last_sent_text"] = custom_msg
-    session_data["last_sent_time"] = now_ts
-
     res = safe_post(username, f"{API}/{ch_id}/messages", {"content": custom_msg}, session_data["speed"], is_claim=True)
     
     with session_data["lock"]:
         if res and res.status_code in [200, 201]:
             log_ticket(username, ch_id)
             t_time = datetime.now().strftime("%I:%M %p")
-            # تحديد نوع التكت لإضاءة الحواف
             cat_type = "administrative" if str(parent_id) == CATEGORY_IDS["administrative"] else "players" if str(parent_id) == CATEGORY_IDS["players"] else "factions"
             session_data["claimed_history"].append({"id": ch_id, "name": name, "time": t_time, "cat": cat_type})
             if len(session_data["claimed_history"]) > 20: session_data["claimed_history"].pop(0)
@@ -233,36 +229,120 @@ def run_discord_bot(username):
     while d["status"] in ["running", "paused"] and not d["is_suspended"]:
         try: websocket.WebSocketApp("wss://gateway.discord.gg/?v=9&encoding=json", on_open=on_open, on_message=on_message).run_forever()
         except: time.sleep(2)
-
 # ================= HTML TEMPLATES =================
 
-MANIFEST_JSON = """{"name": "M.R Sniper Pro", "short_name": "M.R Sniper", "start_url": "/login", "display": "standalone", "background_color": "#030712", "theme_color": "#ef4444", "icons": [{"src": "https://cdn-icons-png.flaticon.com/512/2202/2202112.png", "sizes": "512x512", "type": "image/png"}]}"""
+MANIFEST_JSON = """
+{
+  "name": "M.R Sniper Pro",
+  "short_name": "M.R Sniper",
+  "start_url": "/login",
+  "display": "standalone",
+  "background_color": "#030712",
+  "theme_color": "#ef4444",
+  "icons": [
+    {"src": "https://cdn-icons-png.flaticon.com/512/2202/2202112.png", "sizes": "512x512", "type": "image/png"}
+  ]
+}
+"""
 
 LOGIN_HTML = """
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <link rel="manifest" href="/manifest.json"><link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2202/2202112.png">
-    <title>تسجيل الدخول</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2202/2202112.png">
+    <title>بوابة الخزنة السحرية</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@600;800&display=swap');
         body { background: #030712; color: #fff; font-family: 'Cairo', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .card { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(15px); padding: 40px; border-radius: 16px; border: 1px solid rgba(59, 130, 246, 0.2); width: 320px; text-align: center; }
-        input { width: 100%; padding: 12px; margin: 10px 0; background: rgba(0,0,0,0.6); border: 1px solid #1e293b; color: #fff; border-radius: 8px; text-align: center; font-size: 16px;}
-        button { width: 100%; padding: 12px; background: #3b82f6; color: #fff; border: none; border-radius: 8px; font-weight: 800; font-family: 'Cairo'; cursor: pointer; margin-top: 15px;}
+        .card { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(15px); padding: 40px; border-radius: 16px; border: 1px solid rgba(59, 130, 246, 0.2); box-shadow: 0 20px 50px rgba(0,0,0,0.8); width: 320px; text-align: center; }
+        input { width: 100%; padding: 12px; margin: 10px 0; background: rgba(0,0,0,0.6); border: 1px solid #1e293b; color: #fff; border-radius: 8px; text-align: center; outline: none; transition: 0.3s; box-sizing: border-box; font-size: 16px;}
+        input:focus { border-color: #3b82f6; box-shadow: 0 0 10px rgba(59,130,246,0.3); }
+        button { width: 100%; padding: 12px; background: #3b82f6; color: #fff; border: none; border-radius: 8px; font-weight: 800; font-family: 'Cairo'; font-size: 16px; cursor: pointer; transition: 0.3s; margin-top: 15px;}
+        button:hover { background: #2563eb; box-shadow: 0 0 20px rgba(59,130,246,0.5); }
+        .avatar { width: 90px; height: 90px; border-radius: 50%; border: 3px solid #3b82f6; margin-bottom: 10px; background: #1e293b; display: inline-flex; align-items: center; justify-content: center; font-size: 30px; font-weight: bold;}
+        #pin-input { font-size: 24px; letter-spacing: 15px; font-family: monospace;}
+        .error-msg { color: #ef4444; font-size: 12px; margin-top: 10px; display: none; }
     </style>
 </head>
 <body>
-    <div class="card">
-        <h2>بوابة العبور</h2>
-        <form method="POST">
-            <input type="text" name="username" placeholder="اسم المستخدم" required>
-            <input type="password" name="password" placeholder="كلمة المرور" required>
-            <button type="submit">دخول</button>
+    <div class="card" id="login-container">
+        
+        <!-- واجهة الخزنة -->
+        <div id="vault-view" style="display:none;">
+            <div class="avatar" id="vault-avatar">M</div>
+            <h2 id="vault-name" style="margin:5px 0 20px 0; color:#cbd5e1;">مرحباً مجدداً</h2>
+            <p style="font-size:12px; color:#94a3b8; margin-bottom:15px;">أدخل رمز PIN السري</p>
+            <input type="password" id="pin-input" maxlength="4" pattern="[0-9]*" inputmode="numeric" placeholder="••••">
+            <div id="pin-error" class="error-msg">الرمز غير صحيح، حاول مجدداً</div>
+            <button onclick="unlockVault()">فتح الخزنة 🔓</button>
+            <a href="#" onclick="resetVault()" style="color:#ef4444; text-decoration:none; font-size:12px; display:block; margin-top:20px;">تسجيل الدخول بحساب آخر</a>
+        </div>
+
+        <!-- واجهة الدخول لأول مرة -->
+        <div id="normal-view" style="display:none;">
+            <h2 style="margin-top:0;">بوابة الدخول</h2>
+            <input type="text" id="username" placeholder="اسم المستخدم" required>
+            <input type="password" id="password" placeholder="كلمة المرور" required>
+            <hr style="border: 1px solid #1e293b; margin: 15px 0;">
+            <p style="font-size:11px; color:#94a3b8; margin-bottom:5px;">أنشئ رمز PIN لسهولة الدخول لاحقاً</p>
+            <input type="password" id="new-pin" placeholder="رمز PIN من 4 أرقام" maxlength="4" pattern="[0-9]*" inputmode="numeric" required>
+            <button onclick="saveAndLogin()">دخول وحفظ 💾</button>
+            {% if error %}<p style="color:#ef4444; font-size:12px; margin-top:10px;">{{ error }}</p>{% endif %}
+        </div>
+
+        <form id="hidden-form" method="POST" style="display:none;">
+            <input type="hidden" name="username" id="hidden-user">
+            <input type="hidden" name="password" id="hidden-pass">
         </form>
-        {% if error %}<p style="color:#ef4444; font-size:12px;">{{ error }}</p>{% endif %}
+
     </div>
+
+    <script>
+        let vaultData = localStorage.getItem("mr_vault_v2");
+        if (vaultData) {
+            let data = JSON.parse(vaultData);
+            document.getElementById("vault-name").innerText = "مرحباً " + data.u;
+            document.getElementById("vault-avatar").innerText = data.u.charAt(0).toUpperCase();
+            document.getElementById("vault-view").style.display = "block";
+        } else {
+            document.getElementById("normal-view").style.display = "block";
+        }
+
+        function saveAndLogin() {
+            let u = document.getElementById("username").value;
+            let p = document.getElementById("password").value;
+            let pin = document.getElementById("new-pin").value;
+            if(!u || !p || pin.length !== 4) { alert("يرجى تعبئة جميع الحقول وتأكد أن الرمز 4 أرقام."); return; }
+            
+            localStorage.setItem("mr_vault_v2", JSON.stringify({u: u, p: btoa(p), pin: pin}));
+            document.getElementById("hidden-user").value = u;
+            document.getElementById("hidden-pass").value = p;
+            document.getElementById("hidden-form").submit();
+        }
+
+        function unlockVault() {
+            let data = JSON.parse(localStorage.getItem("mr_vault_v2"));
+            let inputPin = document.getElementById("pin-input").value;
+            
+            if (inputPin === data.pin) {
+                document.getElementById("hidden-user").value = data.u;
+                document.getElementById("hidden-pass").value = atob(data.p);
+                document.getElementById("hidden-form").submit();
+            } else {
+                document.getElementById("pin-error").style.display = "block";
+                document.getElementById("pin-input").value = "";
+            }
+        }
+
+        function resetVault() {
+            localStorage.removeItem("mr_vault_v2");
+            document.getElementById("vault-view").style.display = "none";
+            document.getElementById("normal-view").style.display = "block";
+        }
+    </script>
 </body>
 </html>
 """
@@ -271,8 +351,10 @@ PANEL_HTML = """
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <link rel="manifest" href="/manifest.json"><link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2202/2202112.png">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2202/2202112.png">
     <title>M.R Command Center</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -281,13 +363,16 @@ PANEL_HTML = """
         :root { --prim: {{ theme_data.prim }}; --sec: {{ theme_data.sec }}; --bg: {{ theme_data.bg }}; }
         body { background: var(--bg); color: #f8fafc; font-family: 'Cairo', sans-serif; text-align: center; margin: 0; padding: 15px; padding-bottom: 60px; min-height: 100vh;}
         
-        /* إضاءة الحواف (Edge Lighting) */
+        /* إضاءة الحواف السينمائية (Edge Lighting) */
         #edge-lighting { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9999; opacity: 0; transition: opacity 0.3s, box-shadow 0.3s; }
-        .edge-flash-admin { opacity: 1 !important; box-shadow: inset 0 0 40px rgba(239,68,68,0.8) !important; }
-        .edge-flash-player { opacity: 1 !important; box-shadow: inset 0 0 40px rgba(59,130,246,0.8) !important; }
-        .edge-flash-faction { opacity: 1 !important; box-shadow: inset 0 0 40px rgba(251,191,36,0.8) !important; }
+        .edge-flash-admin { opacity: 1 !important; box-shadow: inset 0 0 50px rgba(239,68,68,0.9) !important; }
+        .edge-flash-player { opacity: 1 !important; box-shadow: inset 0 0 50px rgba(59,130,246,0.9) !important; }
+        .edge-flash-faction { opacity: 1 !important; box-shadow: inset 0 0 50px rgba(251,191,36,0.9) !important; }
 
+        /* توفير البطارية */
         body.battery-saver * { animation: none !important; box-shadow: none !important; text-shadow: none !important; background-image: none !important; }
+        
+        /* الوضع المدمج */
         body.compact-mode .glass-card { padding: 15px; }
         body.compact-mode h1 { font-size: 16px; margin: 0;}
         body.compact-mode .btn { padding: 8px; font-size: 12px; }
@@ -314,6 +399,7 @@ PANEL_HTML = """
         
         input, select, textarea { width: 100%; padding: 10px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 10px; box-sizing: border-box; font-family: 'Cairo'; margin-bottom: 10px;}
         
+        /* شاشة ديسكورد المستنسخة */
         .ghost-panel { background: #313338; max-width: 440px; width: 100%; border-radius: 15px; margin: 10px auto; display: flex; flex-direction: column; height: 500px; overflow: hidden; position: relative;}
         .pull-indicator { position: absolute; top: -30px; left: 0; width: 100%; text-align: center; color: #949ba4; font-size: 12px; transition: 0.2s;}
         .ghost-header { background: #2b2d31; color: #f2f3f5; font-weight: bold; padding: 10px; font-size: 14px; text-align: right; z-index: 10;}
@@ -325,6 +411,7 @@ PANEL_HTML = """
         .discord-avatar { width: 35px; height: 35px; border-radius: 50%; margin-right: 10px; background: #5865F2; display: flex; align-items: center; justify-content: center; font-weight: bold;}
         .discord-text { color: #dbdee1; font-size: 14px; line-height: 1.3;}
 
+        /* نافذة الإحصائيات (Modal) */
         .modal { display: none; position: fixed; z-index: 9999; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); justify-content: center; align-items: center; }
         .modal-content { background: #1e293b; padding: 20px; border-radius: 15px; text-align: center; width: 80%; border: 1px solid #3b82f6;}
     </style>
@@ -338,6 +425,9 @@ PANEL_HTML = """
         <a href="javascript:void(0)" class="closebtn" onclick="closeNav()">&times;</a>
         <div class="sidebar-content">
             <button onclick="showStats()" class="btn btn-start" style="margin-bottom:15px;">📊 إحصائياتي الشخصية</button>
+            <button onclick="toggleGhost()" class="btn btn-secondary" style="margin-bottom:15px;">👁️ إظهار/إخفاء المراقبة</button>
+            <button onclick="requestNotificationPermission()" class="btn btn-secondary" style="margin-bottom:15px; background: #8b5cf6;">🔔 إشعارات الجوال (Push)</button>
+            
             <form action="/update_sidebar" method="post">
                 <select name="theme">
                     {% for k, v in themes.items() %}<option value="{{ k }}" {% if theme == k %}selected{% endif %}>{{ v.name }}</option>{% endfor %}
@@ -347,7 +437,7 @@ PANEL_HTML = """
                     <option value="administrative" {% if ticket_filter == 'administrative' %}selected{% endif %}>🛡️ شكاوى إدارية</option>
                 </select>
                 <div style="text-align:right; margin-bottom:10px; font-size:12px; color:#94a3b8;">
-                    <input type="checkbox" name="compact_mode" style="width:auto; display:inline;" {% if compact_mode %}checked{% endif %}> تفعيل الوضع المدمج (للموبايل)
+                    <input type="checkbox" name="compact_mode" style="width:auto; display:inline;" {% if compact_mode %}checked{% endif %}> الوضع المدمج (للموبايل)
                 </div>
                 <button type="submit" class="btn btn-secondary" style="background: var(--prim); color:#fff;">حفظ التغييرات</button>
             </form>
@@ -356,6 +446,7 @@ PANEL_HTML = """
         </div>
     </div>
 
+    <!-- نافذة الإحصائيات -->
     <div id="statsModal" class="modal">
         <div class="modal-content">
             <h3 style="color:#3b82f6; margin-top:0;">إحصائيات القنص</h3>
@@ -403,18 +494,38 @@ PANEL_HTML = """
             </form>
         </div>
 
+        <!-- شاشة ديسكورد المستنسخة -->
         <div class="ghost-panel" id="ghost_panel">
             <div class="pull-indicator" id="pullIndicator">اسحب للأسفل للتحديث ↓</div>
             <div class="ghost-header">Discord Live</div>
             <div class="ticket-list" id="ticket_list"></div>
-            <div class="chat-box" id="chat_box"><div style="color:#949ba4; text-align:center; margin-top:40%; font-weight:600;">يرجى تحديد تذكرة...</div></div>
+            <div class="chat-box" id="chat_box"><div style="color:#949ba4; text-align:center; margin-top:40%; font-weight:600;">يرجى تحديد تذكرة للمراقبة...</div></div>
         </div>
     </div>
 
     <script>
-        function openNav() { document.getElementById("mySidebar").style.width = "250px"; }
+        function openNav() { document.getElementById("mySidebar").style.width = "260px"; }
         function closeNav() { document.getElementById("mySidebar").style.width = "0"; }
+        
+        // إخفاء/إظهار شاشة المراقبة
+        function toggleGhost() { 
+            var p = document.getElementById("ghost_panel");
+            p.style.display = (p.style.display === "none" || p.style.display === "") ? "flex" : "none";
+            closeNav();
+        }
 
+        // الإشعارات
+        function requestNotificationPermission() {
+            if ("Notification" in window) {
+                Notification.requestPermission().then(permission => {
+                    if (permission === "granted") alert("✅ تم تفعيل إشعارات الجوال بنجاح!");
+                    else alert("❌ يرجى السماح بالإشعارات من إعدادات المتصفح.");
+                });
+            } else { alert("جهازك لا يدعم الإشعارات المنبثقة."); }
+            closeNav();
+        }
+
+        // توفير البطارية
         if(navigator.getBattery) {
             navigator.getBattery().then(function(b) {
                 if(b.level <= 0.20 && !b.charging) document.body.classList.add('battery-saver');
@@ -425,6 +536,7 @@ PANEL_HTML = """
             });
         }
 
+        // السحب للتحديث (Pull-to-refresh)
         let touchStartY = 0;
         const ghostPanel = document.getElementById('ghost_panel');
         const pullInd = document.getElementById('pullIndicator');
@@ -520,11 +632,16 @@ PANEL_HTML = """
 
                 if (data.count > lastCount) {
                     let newTicket = data.history[data.history.length - 1];
-                    if(newTicket) triggerEdgeLighting(newTicket.cat);
+                    if(newTicket) {
+                        triggerEdgeLighting(newTicket.cat);
+                        if ("Notification" in window && Notification.permission === "granted") {
+                            new Notification("M.R Command Center 🚀", { body: "تم قنص تكت جديد: #" + newTicket.name, icon: "https://cdn-icons-png.flaticon.com/512/2202/2202112.png" });
+                        }
+                    }
                     lastCount = data.count;
                 } else if (data.count < lastCount) { lastCount = data.count; }
 
-                // شريط الحالة التفاعلي (Dynamic App Title)
+                // شريط الحالة التفاعلي
                 document.title = `🚀 ${data.count}/${data.max_tickets} | M.R System`;
 
                 document.getElementById('count_disp').innerText = data.count + '/' + data.max_tickets;
@@ -548,7 +665,8 @@ MASTER_HTML = """
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8"><title>Master Pro</title>
+    <meta charset="UTF-8">
+    <title>Master Pro | القيادة العليا</title>
     <style>
         body { background: #020617; color: #f8fafc; font-family: sans-serif; padding: 20px;}
         .card { background: #0f172a; padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #1e293b;}
@@ -556,16 +674,34 @@ MASTER_HTML = """
         th, td { padding: 12px; border-bottom: 1px solid #334155; text-align: center; font-size:14px;}
         th { background: #020617; color: #38bdf8; }
         .btn { padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer; color: white; font-weight: bold;}
-        .btn-red { background: #ef4444; } .btn-yellow { background: #fbbf24; color: #000; }
+        .btn-red { background: #ef4444; } .btn-yellow { background: #fbbf24; color: #000; } .btn-green { background: #10b981; }
         input { padding: 8px; border-radius: 5px; border: 1px solid #334155; background: #020617; color: #fff;}
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px;}
     </style>
 </head>
 <body>
     <h1 style="text-align:center; color:#38bdf8;">👑 لوحة تحكم الإدارة العليا (Master Pro)</h1>
+    
+    <div class="grid">
+        <div class="card">
+            <h3>📢 إرسال إعلان للفريق (Broadcast)</h3>
+            <form action="/master_settings" method="post" style="display:flex; gap:10px;">
+                <input type="text" name="broadcast" placeholder="اكتب الإعلان ليظهر كـ منبثق للجميع..." style="flex:1;" required>
+                <button type="submit" class="btn btn-yellow">إرسال 🚀</button>
+            </form>
+            <hr style="border-color:#334155; margin:15px 0;">
+            <h3>⏱️ مقيّد السرعة (Speed Limit)</h3>
+            <form action="/master_settings" method="post" style="display:flex; gap:10px;">
+                <input type="number" step="0.1" name="min_speed" value="{{ min_speed }}" placeholder="الحد الأدنى للسرعة">
+                <button type="submit" class="btn btn-red">تطبيق القيد 🔒</button>
+            </form>
+        </div>
+    </div>
+
     <div class="card">
-        <h3>👥 إدارة الفريق</h3>
+        <h3>👥 إدارة الفريق والبث المباشر (Spectate)</h3>
         <table>
-            <tr><th>المستخدم</th><th>الحالة</th><th>يقرأ الآن (Live 👁️)</th><th>المنجز</th></tr>
+            <tr><th>المستخدم</th><th>الحالة</th><th>يقرأ الآن (Live 👁️)</th><th>المنجز</th><th>الإجراءات السريعة</th></tr>
             {% for u, d in users.items() %}
             <tr>
                 <td><b>{{ u }}</b></td>
@@ -574,6 +710,18 @@ MASTER_HTML = """
                 </td>
                 <td style="color:#38bdf8;">{{ d.currently_viewing }}</td>
                 <td>{{ d.count }}</td>
+                <td>
+                    <form action="/master_user_action" method="post" style="display:flex; gap:5px; justify-content:center;">
+                        <input type="hidden" name="target_user" value="{{ u }}">
+                        {% if not d.is_suspended %}
+                            {% if d.status == 'running' %}<button type="submit" name="action" value="pause" class="btn btn-yellow">⏸️</button>{% endif %}
+                            <button type="submit" name="action" value="stop" class="btn btn-red">🛑</button>
+                            <button type="submit" name="action" value="suspend" class="btn" style="background:#475569;">تجميد ❄️</button>
+                        {% else %}
+                            <button type="submit" name="action" value="unsuspend" class="btn btn-green">فك التجميد 🔥</button>
+                        {% endif %}
+                    </form>
+                </td>
             </tr>
             {% endfor %}
         </table>
@@ -582,6 +730,8 @@ MASTER_HTML = """
 </body>
 </html>
 """
+
+# ================= FLASK ROUTES =================
 
 @app.route('/')
 def index(): return redirect(url_for('login'))
@@ -593,11 +743,11 @@ def login():
         if username == "Marshall" and password == "oopp00998":
             session['master'] = True; return redirect(url_for('master'))
         if username in user_sessions and user_sessions[username]["password"] == password:
-            if user_sessions[username]["is_suspended"]: return render_template_string(LOGIN_HTML, error="حسابك مجمد ❄️")
+            if user_sessions[username]["is_suspended"]: return render_template_string(LOGIN_HTML, error="حسابك مجمد من قبل الإدارة العليا ❄️")
             session['user'] = username
             if not user_sessions[username]["token"]: return redirect(url_for('set_token'))
             return redirect(url_for('panel'))
-        return render_template_string(LOGIN_HTML, error="بيانات غير صحيحة")
+        return render_template_string(LOGIN_HTML, error="بيانات الدخول غير صحيحة")
     return render_template_string(LOGIN_HTML)
 
 @app.route('/token', methods=['GET', 'POST'])
@@ -605,7 +755,7 @@ def set_token():
     if 'user' not in session: return redirect(url_for('login'))
     if request.method == 'POST':
         user_sessions[session['user']]["token"] = request.form.get('token').strip(); save_db(session['user']); return redirect(url_for('panel'))
-    return render_template_string("""<body style="background:#030712; text-align:center; padding-top:100px;"><form method="POST"><textarea name="token" required style="width:300px; height:80px;"></textarea><br><button style="padding:10px; background:#3b82f6; color:#fff; border:none; margin-top:10px;">حفظ</button></form></body>""")
+    return render_template_string("""<body style="background:#030712; text-align:center; padding-top:100px;"><form method="POST"><textarea name="token" required style="width:300px; height:80px; padding:10px; border-radius:10px;"></textarea><br><button style="padding:10px; background:#3b82f6; color:#fff; border:none; margin-top:10px; border-radius:10px; font-weight:bold;">حفظ التوكن 🔒</button></form></body>""")
 
 @app.route('/panel')
 def panel():
@@ -690,6 +840,33 @@ def logout(): session.pop('user', None); session.pop('master', None); return red
 @app.route('/master')
 def master():
     if not session.get('master'): return redirect(url_for('login'))
-    return render_template_string(MASTER_HTML, users=user_sessions)
+    return render_template_string(MASTER_HTML, users=user_sessions, min_speed=global_settings["min_speed"])
+
+@app.route('/master_settings', methods=['POST'])
+def master_settings():
+    if session.get('master'):
+        if 'broadcast' in request.form:
+            global_settings["broadcast_msg"] = request.form.get('broadcast')
+            global_settings["broadcast_id"] += 1
+        if 'min_speed' in request.form:
+            try: global_settings["min_speed"] = float(request.form.get('min_speed'))
+            except: pass
+    return redirect(url_for('master'))
+
+@app.route('/master_user_action', methods=['POST'])
+def master_user_action():
+    if session.get('master'):
+        target, action = request.form.get('target_user'), request.form.get('action')
+        if target in user_sessions:
+            if action == "pause": user_sessions[target]["status"] = "paused"
+            elif action == "stop": user_sessions[target]["status"] = "stopped"
+            elif action == "suspend": 
+                user_sessions[target]["is_suspended"] = 1
+                user_sessions[target]["status"] = "stopped"
+                save_db(target)
+            elif action == "unsuspend": 
+                user_sessions[target]["is_suspended"] = 0
+                save_db(target)
+    return redirect(url_for('master'))
 
 if __name__ == '__main__': app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
