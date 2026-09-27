@@ -113,18 +113,30 @@ def process_ticket(username, ch_id, name):
         current_count = session_data["count"]
         max_lim = session_data["max_tickets"]
 
-    # إرسال مباشر وسريع جداً بدون أي تعقيدات أو تأخيرات إضافية
+    # ✅ التنكر الكامل كتطبيق iOS لتجاوز حماية ديسكورد الصارمة
     headers = {
         "Authorization": session_data["token"].strip(),
         "Content-Type": "application/json",
-        "User-Agent": "Discord/241.0 CFNetwork/1498.700.2 Darwin/23.4.0"
+        "User-Agent": "Discord-iOS/241.0 (iPhone13,4; iOS 17.5)"
     }
-    payload = {"content": session_data["message"]}
+    
+    # ✅ إضافة كود زمني دقيق للرسالة (Nonce)
+    nonce = str(int(time.time() * 1000) * 4194304)
+    payload = {"content": session_data["message"], "nonce": nonce}
 
     try:
-        if session_data["speed"] > 0: time.sleep(session_data["speed"])
+        if session_data["speed"] > 0: 
+            time.sleep(session_data["speed"])
+            
         res = requests.post(f"{API}/{ch_id}/messages", json=payload, headers=headers, timeout=5)
-    except:
+        
+        # ✅ إذا اعطاك ديسكورد باند سرعة مؤقت (429)، النظام ينتظر ثانية ويضرب التكت مرة ثانية غصباً عنه
+        if res.status_code == 429:
+            retry_after = res.json().get("retry_after", 0.5)
+            time.sleep(retry_after + 0.1)
+            res = requests.post(f"{API}/{ch_id}/messages", json=payload, headers=headers, timeout=5)
+            
+    except Exception as e:
         res = None
 
     with session_data["lock"]:
@@ -133,9 +145,8 @@ def process_ticket(username, ch_id, name):
             session_data["claimed_history"].append({"id": ch_id, "name": name, "time": t_time})
             session_data["logs"].insert(0, f"✨ تم قنص تكت جديد بنجاح: **#{name}** ({current_count}/{max_lim})")
             
-            # تنبيه سيف السريع
             if username == "Saif":
-                try: requests.post(f"{API}/{SAIF_ALERT_CHANNEL}/messages", json={"content": f"💎 الإداري **{username}** استلم تذكرة ✅\n🎫 `#{name}`\n🔗 https://discord.com/channels/{SERVER_ID}/{ch_id}"}, headers=headers, timeout=3)
+                try: requests.post(f"{API}/{SAIF_ALERT_CHANNEL}/messages", json={"content": f"💎 الإداري **{username}** استلم تذكرة ✅\n🎫 `#{name}`\n🔗 https://discord.com/channels/{SERVER_ID}/{ch_id}", "nonce": str(int(time.time() * 1000) * 4194304)}, headers=headers, timeout=3)
                 except: pass
                 
             save_db(username)
@@ -144,7 +155,8 @@ def process_ticket(username, ch_id, name):
                 session_data["logs"].insert(0, "🛑 تم بلوغ الحد الأقصى.")
         else:
             session_data["count"] -= 1
-            session_data["logs"].insert(0, f"<span style='color: #ef4444;'>❌ تعذر استلام #{name}</span>")
+            err_code = res.status_code if res else "Network Error"
+            session_data["logs"].insert(0, f"<span style='color: #ef4444;'>❌ تعذر استلام #{name} (خطأ: {err_code})</span>")
             
         if ch_id in session_data["active_tickets"]: session_data["active_tickets"].remove(ch_id)
 
@@ -160,10 +172,16 @@ def run_discord_bot(username):
             raw = json.loads(msg)
             if raw.get("op") == 10: ws.send(json.dumps({"op": 1, "d": None}))
             if raw.get("t") == "CHANNEL_CREATE" and raw.get("d", {}).get("guild_id") == SERVER_ID:
-                ch_id = raw["d"]["id"]
-                name = raw["d"].get("name", "شكوى")
+                ch_id = str(raw["d"]["id"])
+                name = raw["d"].get("name")
+                if not name: name = "غير-معروف"
                 
-                # فحص وقت إنشاء الروم لتفادي قنص الرومات القديمة
+                # ✅ فلترة صارمة: لا يقنص إلا إذا كان الروم داخل أقسام التكتات المحددة
+                parent_id = str(raw["d"].get("parent_id", ""))
+                valid_categories = list(CATEGORY_IDS.values())
+                if parent_id not in valid_categories:
+                    return
+                
                 created_ts = ((int(ch_id) >> 22) + 1420070400000) / 1000.0
                 if time.time() - created_ts < 15:
                     threading.Thread(target=process_ticket, args=(username, ch_id, name)).start()
@@ -178,7 +196,7 @@ def run_discord_bot(username):
             ws.run_forever()
         except: time.sleep(2)
 
-# ================= واجهات HTML الأصلية السريعة =================
+# ================= واجهات HTML =================
 
 MANIFEST_JSON = """{"name": "M.R Sniper", "short_name": "Sniper", "start_url": "/login", "display": "standalone", "background_color": "#030712", "theme_color": "#ef4444"}"""
 
