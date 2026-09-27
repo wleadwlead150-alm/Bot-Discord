@@ -14,7 +14,7 @@ from io import StringIO
 from flask import Flask, render_template_string, request, redirect, url_for, session, make_response, jsonify
 
 app = Flask(__name__)
-app.secret_key = "MR_ELITE_SECRET_CORE_V99"
+app.secret_key = "MR_ELITE_SECRET_CORE_V99_FIXED"
 
 # الحسابات الافتراضية
 INITIAL_USERS = {
@@ -135,13 +135,13 @@ def save_db(uname):
 init_db()
 load_db()
 
+# ✅ تحديث حماية ديسكورد الجديدة (Shadow Ban Bypass)
 def get_secure_headers(token):
-    build_num = random.randint(320000, 325000)
-    props = {"os": "iOS", "browser": "Discord Client", "device": "iPhone 13, pro, max", "system_version": "17.5", "client_build_number": build_num, "client_version": "241.0"}
+    props = {"os": "iOS", "browser": "Discord Client", "device": "iPhone 13, pro, max", "system_version": "17.5", "client_build_number": 335000, "client_version": "245.0"}
     b64_props = base64.b64encode(json.dumps(props).encode()).decode()
     return {
         "Authorization": token.strip(), "Content-Type": "application/json",
-        "User-Agent": "Discord/241.0 CFNetwork/1498.700.2 Darwin/23.4.0",
+        "User-Agent": "Discord/245.0 CFNetwork/1498.700.2 Darwin/23.4.0",
         "X-Super-Properties": b64_props, "X-Discord-Locale": "ar", "Accept-Language": "ar,en-US;q=0.9,en;q=0.8"
     }
 
@@ -166,7 +166,7 @@ def safe_post(username, url, payload, current_speed, is_claim=False):
 def process_ticket(username, ch_id, name, parent_id):
     session_data = user_sessions[username]
     with session_data["lock"]:
-        if session_data["status"] != "running" or session_data["banned_secure"]: return
+        if session_data["status"] != "running" or session_data.get("banned_secure"): return
         if session_data["count"] >= session_data["max_tickets"]:
             session_data["status"] = "stopped"
             return
@@ -194,7 +194,11 @@ def process_ticket(username, ch_id, name, parent_id):
     session_data["last_sent_text"] = custom_msg
     session_data["last_sent_time"] = now_ts
 
-    res = safe_post(username, f"{API}/{ch_id}/messages", {"content": custom_msg}, current_speed, is_claim=True)
+    # ✅ توليد Nonce زمني لمنع ديسكورد من حظر الرسالة بصمت
+    nonce = str((int(time.time()) * 1000 - 1420070400000) << 22)
+    payload = {"content": custom_msg, "nonce": nonce}
+
+    res = safe_post(username, f"{API}/{ch_id}/messages", payload, current_speed, is_claim=True)
     
     with session_data["lock"]:
         if res and res.status_code in [200, 201]:
@@ -206,7 +210,10 @@ def process_ticket(username, ch_id, name, parent_id):
             if len(session_data["claimed_history"]) > 20: session_data["claimed_history"].pop(0)
 
             if username == "Saif":
-                alert_payload = {"content": f"💎 **إشعار الإدارة** 💎\nالإداري **{username}** استلم تذكرة ✅\n🎫 `#{name}`\n🔗 {ticket_url}"}
+                alert_payload = {
+                    "content": f"💎 **إشعار الإدارة** 💎\nالإداري **{username}** استلم تذكرة ✅\n🎫 `#{name}`\n🔗 {ticket_url}",
+                    "nonce": str((int(time.time()) * 1000 - 1420070400000) << 22)
+                }
                 threading.Thread(target=safe_post, args=(username, f"{API}/{SAIF_ALERT_CHANNEL}/messages", alert_payload, 0)).start()
 
             session_data["logs"].insert(0, f"{log_text} ({current_count}/{max_lim})")
@@ -217,9 +224,10 @@ def process_ticket(username, ch_id, name, parent_id):
                 session_data["status"] = "stopped"
                 session_data["logs"].insert(0, "🛑 تم بلوغ الحد الأقصى، توقف النظام.")
         else:
+            err_code = res.status_code if res else "Unknown"
             session_data["count"] = max(0, session_data["count"] - 1)
             session_data["total_lifetime"] = max(0, session_data["total_lifetime"] - 1)
-            session_data["logs"].insert(0, f"<span style='color: #ef4444;'>❌ تعذر استلام #{name}</span>")
+            session_data["logs"].insert(0, f"<span style='color: #ef4444;'>❌ تعذر استلام #{name} (Code: {err_code})</span>")
             
         if ch_id in session_data["active_tickets"]: session_data["active_tickets"].remove(ch_id)
 
@@ -288,7 +296,6 @@ LANDING_HTML = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="manifest" href="/manifest.json">
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2202/2202112.png">
     <title>M.R COMMAND CENTER</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&display=swap');
@@ -296,7 +303,7 @@ LANDING_HTML = """
         .glitch-wrapper { position: relative; text-align: center; }
         h1 { font-size: 3.5rem; margin: 0; letter-spacing: 4px; color: #f8fafc; text-shadow: 0 0 20px rgba(255,255,255,0.2); }
         h3 { font-size: 1.2rem; color: #94a3b8; margin-top: 10px; letter-spacing: 12px; font-weight: 400; text-transform: uppercase;}
-        .red-btn { margin-top: 50px; padding: 18px 50px; background: transparent; border: 2px solid #ef4444; color: #ef4444; font-size: 1.2rem; font-weight: 700; text-transform: uppercase; letter-spacing: 3px; text-decoration: none; border-radius: 8px; transition: all 0.3s ease; box-shadow: 0 0 15px rgba(239,68,68,0.2); cursor: pointer; }
+        .red-btn { margin-top: 50px; padding: 18px 50px; background: transparent; border: 2px solid #ef4444; color: #ef4444; font-size: 1.2rem; font-weight: 700; text-transform: uppercase; letter-spacing: 3px; text-decoration: none; border-radius: 8px; transition: all 0.3s ease; cursor: pointer; }
         .red-btn:hover { background: #ef4444; color: #fff; box-shadow: 0 0 40px rgba(239,68,68,0.8); transform: scale(1.05); }
     </style>
 </head>
@@ -317,7 +324,6 @@ LOGIN_HTML = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="manifest" href="/manifest.json">
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2202/2202112.png">
     <title>بوابة الخزنة السحرية</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@600;800&display=swap');
@@ -351,6 +357,7 @@ LOGIN_HTML = """
             <p style="font-size:11px; color:#94a3b8; margin-bottom:5px;">أنشئ رمز PIN لسهولة الدخول لاحقاً</p>
             <input type="password" id="new-pin" placeholder="رمز PIN من 4 أرقام" maxlength="4" pattern="[0-9]*" inputmode="numeric" required>
             <button onclick="saveAndLogin()">دخول وحفظ 💾</button>
+            {% if error %}<p style="color:#ef4444; font-size:12px; margin-top:10px;">{{ error }}</p>{% endif %}
         </div>
         <form id="hidden-form" method="POST" style="display:none;">
             <input type="hidden" name="username" id="hidden-user">
@@ -371,10 +378,7 @@ LOGIN_HTML = """
             let u = document.getElementById("username").value;
             let p = document.getElementById("password").value;
             let pin = document.getElementById("new-pin").value;
-            if(!u || !p || pin.length !== 4) {
-                alert("يرجى تعبئة جميع الحقول وتأكد أن الرمز 4 أرقام.");
-                return;
-            }
+            if(!u || !p || pin.length !== 4) { alert("يرجى تعبئة جميع الحقول وتأكد أن الرمز 4 أرقام."); return; }
             localStorage.setItem("mr_vault_v99", JSON.stringify({u: u, p: btoa(p), pin: pin}));
             document.getElementById("hidden-user").value = u;
             document.getElementById("hidden-pass").value = p;
@@ -409,7 +413,6 @@ PANEL_HTML = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="manifest" href="/manifest.json">
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2202/2202112.png">
     <title>M.R Elite Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -420,14 +423,11 @@ PANEL_HTML = """
         body { background: var(--bg); color: #f8fafc; font-family: 'Cairo', sans-serif; text-align: center; margin: 0; padding: 15px; padding-bottom: 60px; min-height: 100vh;}
         
         .openbtn { font-size: 26px; cursor: pointer; background: rgba(0,0,0,0.6); color: white; border: 1px solid var(--prim); border-radius: 50%; width: 50px; height: 50px; position: fixed; top: 15px; left: 15px; z-index: 900; box-shadow: 0 0 10px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;}
-        .openbtn:hover { background: var(--prim); }
         .sidebar { height: 100%; width: 0; position: fixed; z-index: 1000; top: 0; right: 0; background-color: rgba(10, 15, 29, 0.98); backdrop-filter: blur(15px); overflow-x: hidden; transition: 0.4s; padding-top: 60px; text-align: right; border-left: 1px solid rgba(255,255,255,0.1); box-shadow: -10px 0 30px rgba(0,0,0,0.8);}
-        .sidebar a, .sidebar-content { padding: 8px 25px; text-decoration: none; font-size: 14px; color: #cbd5e1; display: block; transition: 0.3s; }
-        .sidebar a:hover { color: #fff; background: rgba(255,255,255,0.05);}
-        .sidebar .closebtn { position: absolute; top: 10px; right: 25px; font-size: 36px; padding: 0; color: #ef4444;}
+        .sidebar-content { padding: 8px 25px; }
+        .sidebar .closebtn { position: absolute; top: 10px; right: 25px; font-size: 36px; padding: 0; color: #ef4444; text-decoration: none;}
         
-        .main-content { display: flex; flex-direction: column; align-items: center; transition: margin-right .4s; }
-        .glass-card { background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(20px); max-width: 440px; width: 100%; padding: 26px; border-radius: 20px; border: 1px solid rgba(255,255,255, 0.1); box-shadow: 0 25px 50px rgba(0,0,0,0.9), inset 0 0 20px var(--sec); margin-top: 10px;}
+        .glass-card { background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(20px); max-width: 440px; width: 100%; padding: 26px; border-radius: 20px; border: 1px solid rgba(255,255,255, 0.1); box-shadow: 0 25px 50px rgba(0,0,0,0.9), inset 0 0 20px var(--sec); margin: 10px auto;}
         h1 { color: #fff; font-size: 20px; margin-bottom: 5px; font-weight: 900; }
         .user-tag { color: var(--prim); font-size: 13px; background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 20px; border: 1px solid var(--prim); display: inline-block; margin-bottom: 15px;}
         
@@ -446,28 +446,20 @@ PANEL_HTML = """
 
         .config-title { color: var(--prim); font-size: 12px; margin-bottom: 4px; font-weight: 700; text-align: right;}
         input, select, textarea { width: 100%; padding: 12px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 10px; box-sizing: border-box; font-size: 12px; margin-bottom: 10px; font-family: 'Cairo'; outline: none;}
-        input:focus, select:focus, textarea:focus { border-color: var(--prim); }
         textarea { height: 60px; resize: none; }
         .log-box { background: #000; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 10px; height: 90px; overflow-y: auto; text-align: right; font-size: 11px; color: #94a3b8; margin-top: 10px; }
 
-        .ghost-panel { display: none; background: #313338; max-width: 440px; width: 100%; padding: 0; border-radius: 15px; border: 1px solid #1e1f22; box-shadow: 0 25px 50px rgba(0,0,0,0.9); margin-top: 20px; flex-direction: column; height: 600px; overflow: hidden; font-family: 'gg sans', 'Segoe UI', sans-serif;}
-        .ghost-header { background: #2b2d31; color: #f2f3f5; font-weight: bold; padding: 15px; font-size: 15px; text-align: right; border-bottom: 1px solid #1e1f22; display: flex; align-items: center; gap: 10px;}
-        
+        .ghost-panel { display: none; background: #313338; max-width: 440px; width: 100%; padding: 0; border-radius: 15px; border: 1px solid #1e1f22; box-shadow: 0 25px 50px rgba(0,0,0,0.9); margin: 20px auto; flex-direction: column; height: 600px; overflow: hidden; font-family: 'gg sans', 'Segoe UI', sans-serif;}
+        .ghost-header { background: #2b2d31; color: #f2f3f5; font-weight: bold; padding: 15px; font-size: 15px; text-align: right; border-bottom: 1px solid #1e1f22;}
         .ticket-list { display: flex; padding: 10px; gap: 5px; background: #2b2d31; overflow-x: auto; border-bottom: 1px solid #1e1f22;}
         .tkt-btn { background: #2b2d31; border: none; color: #949ba4; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600; white-space: nowrap; transition: 0.2s;}
-        .tkt-btn:hover { background: #3f4147; color: #dbdee1; }
         .tkt-btn.active { background: #404249; color: #f2f3f5; }
-        
         .chat-box { flex: 1; background: #313338; padding: 15px 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px;}
-        
         .discord-msg { display: flex; padding: 8px 15px; margin-top: 5px; flex-direction: row-reverse; text-align: right;}
-        .discord-msg:hover { background-color: #2e3035; }
         .discord-avatar { width: 40px; height: 40px; border-radius: 50%; margin-right: 15px; margin-left: 0; background: #5865F2; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 16px; flex-shrink: 0;}
         .discord-msg-content { flex: 1; }
         .discord-msg-header { margin-bottom: 2px; display: flex; align-items: baseline; flex-direction: row-reverse; gap: 8px;}
         .discord-username { color: #f2f3f5; font-weight: 600; font-size: 15px;}
-        .discord-bot-tag { background: #5865F2; color: #fff; font-size: 10px; font-weight: bold; padding: 1px 4px; border-radius: 3px; display: inline-flex; align-items: center;}
-        .discord-time { color: #949ba4; font-size: 12px; font-weight: 500;}
         .discord-text { color: #dbdee1; font-size: 15px; line-height: 1.375; word-break: break-word;}
     </style>
 </head>
@@ -477,84 +469,68 @@ PANEL_HTML = """
     <div id="mySidebar" class="sidebar">
         <a href="javascript:void(0)" class="closebtn" onclick="closeNav()">&times;</a>
         <h2 style="color:var(--prim); text-align:center; margin-bottom:20px;">الإعدادات المتقدمة</h2>
-        
         <div class="sidebar-content">
             <form action="/update_sidebar" method="post">
                 <div class="config-title">تخصيص المظهر:</div>
                 <select name="theme">
-                    {% for k, v in themes.items() %}
-                    <option value="{{ k }}" {% if theme == k %}selected{% endif %}>{{ v.name }}</option>
-                    {% endfor %}
+                    {% for k, v in themes.items() %}<option value="{{ k }}" {% if theme == k %}selected{% endif %}>{{ v.name }}</option>{% endfor %}
                 </select>
-
-                <div class="config-title">نوع الشكاوي المستهدفة:</div>
+                <div class="config-title">نوع الشكاوي:</div>
                 <select name="ticket_filter">
                     <option value="all" {% if ticket_filter == 'all' %}selected{% endif %}>🌐 جميع التكتات</option>
-                    <option value="administrative" {% if ticket_filter == 'administrative' %}selected{% endif %}>🛡️ الشكاوى الإدارية</option>
-                    <option value="players" {% if ticket_filter == 'players' %}selected{% endif %}>👤 شكاوى اللاعبين</option>
-                    <option value="factions" {% if ticket_filter == 'factions' %}selected{% endif %}>🎖️ شكاوى قائدات الفصائل</option>
+                    <option value="administrative" {% if ticket_filter == 'administrative' %}selected{% endif %}>🛡️ شكاوى إدارية</option>
                 </select>
                 <button type="submit" class="btn btn-secondary" style="background: var(--prim); color:#fff;">حفظ التغييرات</button>
             </form>
-
             <button onclick="toggleGhost()" class="btn btn-secondary">👁️ إظهار/إخفاء شاشة ديسكورد</button>
             <form action="/token" method="get"><button class="btn btn-secondary">🔑 تحديث التوكن</button></form>
-            <form action="/reset_all" method="post" onsubmit="return confirm('هل أنت متأكد من تصفير العدادات؟');"><button class="btn btn-secondary" style="color:#ef4444;">🗑️ تصفير الإنجاز</button></form>
-            
-            <button onclick="requestNotificationPermission()" class="btn btn-notify">🔔 تفعيل إشعارات الجوال (Push)</button>
-            
-            <a href="/logout" style="color:#ef4444; text-align:center; font-weight:bold; margin-top:20px; display:block;">تسجيل خروج</a>
+            <form action="/reset_all" method="post" onsubmit="return confirm('هل أنت متأكد؟');"><button class="btn btn-secondary" style="color:#ef4444;">🗑️ تصفير العداد</button></form>
+            <button onclick="requestNotificationPermission()" class="btn btn-notify">🔔 إشعارات الجوال (Push)</button>
+            <a href="/logout" style="color:#ef4444; text-align:center; font-weight:bold; margin-top:20px; display:block; text-decoration:none;">تسجيل خروج</a>
         </div>
     </div>
 
-    <div id="main" class="main-content">
-        <div class="glass-card">
-            <h1>M.R COMMAND CENTER</h1>
-            <div class="user-tag">👤 {{ username }}</div>
-            
-            <div class="badge-container">
-                <div class="glass-badge">الهدف <b id="count_disp">{{ count }}/{{ max_tickets }}</b></div>
-                <div class="glass-badge">السرعة <b id="speed_disp">{{ speed }}s</b></div>
-                <div class="glass-badge">الوضع <b id="status_disp" style="color: {% if status == 'running' %}#10b981{% elif status == 'paused' %}#fbbf24{% else %}#ef4444{% endif %};">
-                    {% if status == 'running' %}نشط 🚀{% elif status == 'paused' %}استراحة ⏸️{% else %}متوقف 🛑{% endif %}
-                </b></div>
-            </div>
-
-            <div class="chart-container"><canvas id="progressChart"></canvas></div>
-            
-            <form action="/set_status" method="post" class="action-row">
-                {% if status == 'stopped' %}
-                    <button type="submit" name="new_status" value="running" class="btn btn-start">تشغيل النظام 🚀</button>
-                {% else %}
-                    {% if status == 'running' %}
-                        <button type="submit" name="new_status" value="paused" class="btn btn-pause">استراحة تكتيكية ⏸️</button>
-                    {% else %}
-                        <button type="submit" name="new_status" value="running" class="btn btn-start">استئناف العمل ▶️</button>
-                    {% endif %}
-                    <button type="submit" name="new_status" value="stopped" class="btn btn-stop" style="flex: 0.5;">إيقاف 🛑</button>
-                {% endif %}
-            </form>
-
-            <form action="/update_main" method="post">
-                <div style="display:flex; gap:8px;">
-                    <div style="flex:1;"><div class="config-title">الحد الأقصى (التارجت):</div><input type="number" name="max_tickets" value="{{ max_tickets }}" min="1"></div>
-                    <div style="flex:1;"><div class="config-title">السرعة (ثانية):</div><input type="number" step="0.01" name="custom_speed" value="{{ speed }}"></div>
-                </div>
-                <div class="config-title">نص الرد المباشر:</div>
-                <textarea name="custom_msg">{{ message }}</textarea>
-                <button type="submit" class="btn btn-secondary">حفظ التغييرات السريعة 💾</button>
-            </form>
-
-            <div class="log-box" id="log_box">{% for item in logs %}<div>• {{ item | safe }}</div>{% else %}<div>النظام جاهز...</div>{% endfor %}</div>
+    <div class="glass-card">
+        <h1>M.R COMMAND CENTER</h1>
+        <div class="user-tag">👤 {{ username }}</div>
+        
+        <div class="badge-container">
+            <div class="glass-badge">الهدف <b id="count_disp">{{ count }}/{{ max_tickets }}</b></div>
+            <div class="glass-badge">السرعة <b id="speed_disp">{{ speed }}s</b></div>
+            <div class="glass-badge">الوضع <b id="status_disp" style="color: {% if status == 'running' %}#10b981{% elif status == 'paused' %}#fbbf24{% else %}#ef4444{% endif %};">
+                {% if status == 'running' %}نشط 🚀{% elif status == 'paused' %}استراحة ⏸️{% else %}متوقف 🛑{% endif %}
+            </b></div>
         </div>
 
-        <div class="ghost-panel" id="ghost_panel">
-            <div class="ghost-header">
-                <span style="font-size:20px; color:#80848e;">#</span> المراقبة الحية - Discord
+        <div class="chart-container"><canvas id="progressChart"></canvas></div>
+        
+        <form action="/set_status" method="post" class="action-row">
+            {% if status == 'stopped' %}
+                <button type="submit" name="new_status" value="running" class="btn btn-start">تشغيل النظام 🚀</button>
+            {% else %}
+                {% if status == 'running' %}<button type="submit" name="new_status" value="paused" class="btn btn-pause">استراحة ⏸️</button>
+                {% else %}<button type="submit" name="new_status" value="running" class="btn btn-start">استئناف ▶️</button>{% endif %}
+                <button type="submit" name="new_status" value="stopped" class="btn btn-stop" style="flex: 0.5;">إيقاف 🛑</button>
+            {% endif %}
+        </form>
+
+        <form action="/update_main" method="post">
+            <div style="display:flex; gap:8px;">
+                <div style="flex:1;"><div class="config-title">الحد الأقصى:</div><input type="number" name="max_tickets" value="{{ max_tickets }}" min="1"></div>
+                <div style="flex:1;"><div class="config-title">السرعة:</div><input type="number" step="0.01" name="custom_speed" value="{{ speed }}"></div>
             </div>
-            <div class="ticket-list" id="ticket_list"></div>
-            <div class="chat-box" id="chat_box"><div style="color:#949ba4; text-align:center; margin-top:50%; font-weight:600;">يرجى تحديد تذكرة للمراقبة...</div></div>
-        </div>
+            <div class="config-title">نص الرد المباشر:</div>
+            <textarea name="custom_msg">{{ message }}</textarea>
+            <button type="submit" class="btn btn-secondary">حفظ التغييرات السريعة 💾</button>
+        </form>
+
+        <div class="log-box" id="log_box">{% for item in logs %}<div>• {{ item | safe }}</div>{% else %}<div>النظام جاهز...</div>{% endfor %}</div>
+    </div>
+
+    <div class="ghost-panel" id="ghost_panel">
+        <div class="ghost-header"><span style="font-size:20px; color:#80848e;">#</span> المراقبة الحية - Discord</div>
+        <div class="ticket-list" id="ticket_list"></div>
+        <div class="chat-box" id="chat_box"><div style="color:#949ba4; text-align:center; margin-top:50%; font-weight:600;">يرجى تحديد تذكرة للمراقبة...</div></div>
     </div>
 
     <script>
@@ -570,19 +546,13 @@ PANEL_HTML = """
             if ("Notification" in window) {
                 Notification.requestPermission().then(permission => {
                     if (permission === "granted") alert("✅ تم تفعيل إشعارات الجوال بنجاح!");
-                    else alert("❌ الرجاء السماح للموقع بإرسال الإشعارات من إعدادات جهازك.");
+                    else alert("❌ الرجاء السماح للإشعارات من إعدادات جهازك.");
                 });
-            } else {
-                alert("جهازك لا يدعم الإشعارات المنبثقة.");
-            }
+            } else { alert("جهازك لا يدعم الإشعارات."); }
         }
 
         var ctx = document.getElementById('progressChart').getContext('2d');
-        var myChart = new Chart(ctx, {
-            type: 'doughnut',
-            data: { labels: ['المنجز', 'المتبقي'], datasets: [{ data: [{{ count }}, {{ max_tickets - count if max_tickets - count > 0 else 0 }}], backgroundColor: ['{{ theme_data.prim }}', 'rgba(255,255,255,0.05)'], borderWidth: 0 }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, cutout: '75%' }
-        });
+        var myChart = new Chart(ctx, { type: 'doughnut', data: { labels: ['المنجز', 'المتبقي'], datasets: [{ data: [{{ count }}, {{ max_tickets - count if max_tickets - count > 0 else 0 }}], backgroundColor: ['{{ theme_data.prim }}', 'rgba(255,255,255,0.05)'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, cutout: '75%' } });
 
         let currentActiveTicket = null;
         let lastCount = {{ count }};
@@ -604,17 +574,12 @@ PANEL_HTML = """
                 if(msgs.error) return;
                 let chatHtml = '';
                 msgs.forEach(m => {
-                    let isBot = m.bot ? '<span class="discord-bot-tag"><i>✔</i> APP</span>' : '';
                     let initial = m.author.charAt(0).toUpperCase();
-                    
                     chatHtml += `
                     <div class="discord-msg">
                         <div class="discord-avatar">${initial}</div>
                         <div class="discord-msg-content">
-                            <div class="discord-msg-header">
-                                <span class="discord-username">${m.author}</span>${isBot}
-                                <span class="discord-time">اليوم</span>
-                            </div>
+                            <div class="discord-msg-header"><span class="discord-username">${m.author}</span></div>
                             <div class="discord-text">${m.content}</div>
                         </div>
                     </div>`;
@@ -631,15 +596,10 @@ PANEL_HTML = """
                 if (data.count > lastCount) {
                     let newTicket = data.history[data.history.length - 1];
                     if ("Notification" in window && Notification.permission === "granted") {
-                        new Notification("M.R Command Center 🚀", {
-                            body: "تم قنص تكت جديد بنجاح: #" + (newTicket ? newTicket.name : ""),
-                            icon: "https://cdn-icons-png.flaticon.com/512/2202/2202112.png"
-                        });
+                        new Notification("M.R Command Center 🚀", { body: "تم قنص تكت جديد بنجاح: #" + (newTicket ? newTicket.name : ""), icon: "https://cdn-icons-png.flaticon.com/512/2202/2202112.png" });
                     }
                     lastCount = data.count;
-                } else if (data.count < lastCount) {
-                    lastCount = data.count;
-                }
+                } else if (data.count < lastCount) { lastCount = data.count; }
 
                 document.getElementById('count_disp').innerText = data.count + '/' + data.max_tickets;
                 document.getElementById('speed_disp').innerText = data.speed + 's';
@@ -740,6 +700,8 @@ MASTER_HTML = """
 </body>
 </html>
 """
+
+# ================= مسارات الفلاسك (Flask Routes) =================
 
 @app.route('/manifest.json')
 def manifest():
