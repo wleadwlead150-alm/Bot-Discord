@@ -1,4 +1,5 @@
 import json
+import re
 import time
 import requests
 import websocket
@@ -8,8 +9,9 @@ import os
 import base64
 import sqlite3
 import csv
+from datetime import datetime
 from io import StringIO
-from flask import Flask, render_template_string, request, redirect, url_for, session, make_response
+from flask import Flask, render_template_string, request, redirect, url_for, session, make_response, jsonify
 
 app = Flask(__name__)
 app.secret_key = "MR_ELITE_SECRET_CORE_V99"
@@ -42,16 +44,29 @@ THEMES = {
     "stealth_dark": {"name": "أسود شبحي Stealth", "prim": "#475569", "sec": "#1e293b", "bg": "#020617"}
 }
 
+BACKGROUNDS = {
+    "solid": "بدون خلفية متحركة",
+    "hacker": "شاشة هاكر (Matrix)",
+    "police": "أضواء شرطة (Police Lights)"
+}
+
+AUDIO_ALERTS = {
+    "none": "بدون صوت",
+    "reload": "صوت سلاح (Reload)",
+    "discord": "إشعار ديسكورد",
+    "bell": "جرس إنذار (Alarm)"
+}
+
 user_sessions = {
     u: {
         "running": False, "speed": 1.1, "thread": None, "token": "", "proxy": "", "webhook": "",
         "message": f"أهلاً بك، معك {u} الإدارة العليا. كيف يمكنني مساعدتك؟",
         "ticket_filter": "administrative" if u == "isso" else "all",
         "logs": [], "count": 0, "total_lifetime": 0, "max_tickets": 10, 
-        "cooldown_mode": False, "skip_next": False, "banned_secure": False, 
-        "last_sent_text": "", "last_sent_time": 0,
+        "banned_secure": False, "last_sent_text": "", "last_sent_time": 0,
         "active_tickets": set(), "lock": threading.Lock(),
-        "theme": "cyber_red", "claimed_history": []
+        "theme": "cyber_red", "bg_style": "solid", "audio_alert": "none",
+        "claimed_history": []
     } for u in USERS.keys()
 }
 
@@ -74,12 +89,16 @@ def init_db():
         c.execute('''CREATE TABLE IF NOT EXISTS users
                      (username TEXT PRIMARY KEY, token TEXT, proxy TEXT, message TEXT, 
                       ticket_filter TEXT, speed REAL, max_tickets INTEGER,
-                      count INTEGER, total_lifetime INTEGER, webhook TEXT, theme TEXT)''')
+                      count INTEGER, total_lifetime INTEGER, webhook TEXT, theme TEXT, 
+                      bg_style TEXT, audio_alert TEXT)''')
         
-        # لتجنب مشاكل الأعمدة عند التحديث
         c.execute("PRAGMA table_info(users)")
         existing_cols = [col[1] for col in c.fetchall()]
-        required_cols = {"webhook": "TEXT DEFAULT ''", "theme": "TEXT DEFAULT 'lynwood'", "ticket_filter": "TEXT DEFAULT 'all'"}
+        required_cols = {
+            "webhook": "TEXT DEFAULT ''", "theme": "TEXT DEFAULT 'lynwood'", 
+            "ticket_filter": "TEXT DEFAULT 'all'", "bg_style": "TEXT DEFAULT 'solid'",
+            "audio_alert": "TEXT DEFAULT 'none'"
+        }
         for col_name, col_type in required_cols.items():
             if col_name not in existing_cols:
                 try: c.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
@@ -89,8 +108,8 @@ def init_db():
             c.execute("SELECT username FROM users WHERE username=?", (u,))
             if not c.fetchone():
                 filter_val = "administrative" if u == "isso" else "all"
-                c.execute('''INSERT INTO users (username, token, proxy, message, ticket_filter, speed, max_tickets, count, total_lifetime, webhook, theme)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', 'cyber_red')''', 
+                c.execute('''INSERT INTO users (username, token, proxy, message, ticket_filter, speed, max_tickets, count, total_lifetime, webhook, theme, bg_style, audio_alert)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', 'cyber_red', 'solid', 'none')''', 
                              (u, "", "", user_sessions[u]["message"], filter_val, 1.1, 10, 0, 0))
         conn.commit()
         conn.close()
@@ -116,6 +135,8 @@ def load_db():
                 user_sessions[uname]["total_lifetime"] = row_dict.get("total_lifetime", 0)
                 user_sessions[uname]["webhook"] = row_dict.get("webhook", "")
                 user_sessions[uname]["theme"] = row_dict.get("theme", "cyber_red")
+                user_sessions[uname]["bg_style"] = row_dict.get("bg_style", "solid")
+                user_sessions[uname]["audio_alert"] = row_dict.get("audio_alert", "none")
 
 def save_db(uname):
     with db_lock:
@@ -124,18 +145,17 @@ def save_db(uname):
         d = user_sessions[uname]
         enc_token = cipher(d["token"], True)
         
-        # التأكد من وجود الحساب قبل التحديث
         c.execute("SELECT username FROM users WHERE username=?", (uname,))
         if not c.fetchone():
-            c.execute('''INSERT INTO users (username, token, proxy, message, ticket_filter, speed, max_tickets, count, total_lifetime, webhook, theme)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
-                      (uname, enc_token, d.get("proxy",""), d["message"], d["ticket_filter"], d["speed"], d["max_tickets"], d["count"], d["total_lifetime"], d.get("webhook",""), d.get("theme","cyber_red")))
+            c.execute('''INSERT INTO users (username, token, proxy, message, ticket_filter, speed, max_tickets, count, total_lifetime, webhook, theme, bg_style, audio_alert)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
+                      (uname, enc_token, d.get("proxy",""), d["message"], d["ticket_filter"], d["speed"], d["max_tickets"], d["count"], d["total_lifetime"], d.get("webhook",""), d.get("theme","cyber_red"), d.get("bg_style", "solid"), d.get("audio_alert", "none")))
         else:
             c.execute('''UPDATE users SET token=?, proxy=?, message=?, ticket_filter=?, 
-                         speed=?, max_tickets=?, count=?, total_lifetime=?, webhook=?, theme=? WHERE username=?''',
+                         speed=?, max_tickets=?, count=?, total_lifetime=?, webhook=?, theme=?, bg_style=?, audio_alert=? WHERE username=?''',
                       (enc_token, d.get("proxy",""), d["message"], d["ticket_filter"],
                        d["speed"], d["max_tickets"], d["count"], d["total_lifetime"], d.get("webhook",""), 
-                       d.get("theme","cyber_red"), uname))
+                       d.get("theme","cyber_red"), d.get("bg_style", "solid"), d.get("audio_alert", "none"), uname))
         conn.commit()
         conn.close()
 
@@ -185,24 +205,15 @@ def process_ticket(username, ch_id, name, parent_id):
             session_data["running"] = False
             return
 
-        # 🛡️ فلتر الفئات بدقة
         filter_mode = session_data.get("ticket_filter", "all")
         if filter_mode != "all":
             expected_category = CATEGORY_IDS.get(filter_mode)
             if expected_category and str(parent_id) != str(expected_category):
                 return
-
-        if session_data["cooldown_mode"]:
-            if session_data["skip_next"]:
-                session_data["skip_next"] = False
-                session_data["logs"].insert(0, f"⚡ [Cooldown] تم تخطي التكت `#{name}`.")
-                return
-            else: session_data["skip_next"] = True
             
         if ch_id in session_data["active_tickets"]: return
         session_data["active_tickets"].add(ch_id)
         
-        # حجز التكت
         session_data["count"] += 1
         session_data["total_lifetime"] += 1
         current_count = session_data["count"]
@@ -217,16 +228,16 @@ def process_ticket(username, ch_id, name, parent_id):
     session_data["last_sent_text"] = custom_msg
     session_data["last_sent_time"] = now_ts
 
-    # 🚀 الاستلام الكلاسيكي المباشر والفوري
     res = safe_post(username, f"{API}/{ch_id}/messages", {"content": custom_msg}, current_speed)
     
     with session_data["lock"]:
         if res and res.status_code in [200, 201]:
             ticket_url = f"https://discord.com/channels/{SERVER_ID}/{ch_id}"
             log_text = f"✨ استلمت **#{name}** | <a href='{ticket_url}' target='_blank'>الرابط</a>"
-
-            session_data["claimed_history"].append({"id": ch_id, "name": name})
-            if len(session_data["claimed_history"]) > 10: session_data["claimed_history"].pop(0)
+            
+            t_time = datetime.now().strftime("%I:%M %p")
+            session_data["claimed_history"].append({"id": ch_id, "name": name, "time": t_time})
+            if len(session_data["claimed_history"]) > 20: session_data["claimed_history"].pop(0)
 
             if username == "Saif":
                 alert_payload = {"content": f"💎 **إشعار الإدارة** 💎\nالإداري **{username}** استلم تذكرة ✅\n🎫 `#{name}`\n🔗 {ticket_url}"}
@@ -240,7 +251,6 @@ def process_ticket(username, ch_id, name, parent_id):
                 session_data["running"] = False
                 session_data["logs"].insert(0, "🛑 تم بلوغ الحد الأقصى، توقف النظام.")
         else:
-            # إذا فشل الاستلام نعيد العداد
             session_data["count"] = max(0, session_data["count"] - 1)
             session_data["total_lifetime"] = max(0, session_data["total_lifetime"] - 1)
             session_data["logs"].insert(0, f"<span style='color: #ef4444;'>❌ تعذر استلام #{name}</span>")
@@ -263,17 +273,12 @@ def run_discord_bot(username):
             
             if raw.get("op") == 10: ws.send(json.dumps({"op": 1, "d": None}))
             
-            # 🚀 الاستلام الفوري بمجرد فتح الروم
             if t == "CHANNEL_CREATE":
                 if evt_data.get("guild_id") == SERVER_ID and evt_data.get("type") == 0:
                     ch_id = evt_data.get("id")
                     name = evt_data.get("name", "").lower()
                     parent_id = evt_data.get("parent_id", "")
                     
-                    # درع التكتات القديمة (15 ثانية)
-                    created_timestamp = ((int(ch_id) >> 22) + 1420070400000) / 1000.0
-                    if time.time() - created_timestamp > 15: return 
-
                     with d["lock"]:
                         if d["count"] >= d["max_tickets"] or not d["running"]: return
                     
@@ -291,13 +296,32 @@ def run_discord_bot(username):
 
 # ================= واجهات HTML =================
 
+MANIFEST_JSON = """
+{
+  "name": "M.R Command Center",
+  "short_name": "M.R Sniper",
+  "start_url": "/login",
+  "display": "standalone",
+  "background_color": "#030712",
+  "theme_color": "#ef4444",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3254/3254068.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
+"""
+
 LANDING_HTML = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DISCORD TICKET</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="manifest" href="/manifest.json">
+    <title>M.R COMMAND CENTER</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&display=swap');
         body { background: #030712; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: 'Orbitron', sans-serif; overflow: hidden; }
@@ -306,14 +330,41 @@ LANDING_HTML = """
         h3 { font-size: 1.2rem; color: #94a3b8; margin-top: 10px; letter-spacing: 12px; font-weight: 400; text-transform: uppercase;}
         .red-btn { margin-top: 50px; padding: 18px 50px; background: transparent; border: 2px solid #ef4444; color: #ef4444; font-size: 1.2rem; font-weight: 700; text-transform: uppercase; letter-spacing: 3px; text-decoration: none; border-radius: 8px; transition: all 0.3s ease; box-shadow: 0 0 15px rgba(239,68,68,0.2); cursor: pointer; }
         .red-btn:hover { background: #ef4444; color: #fff; box-shadow: 0 0 40px rgba(239,68,68,0.8); transform: scale(1.05); }
+        
+        #pwa-modal { display:none; position:fixed; z-index:9999; top:0; left:0; width:100%; height:100%; background:rgba(3,7,18,0.95); backdrop-filter: blur(10px); color:#fff; text-align:center; padding-top:20vh; font-family: sans-serif;}
+        .pwa-box { background: #1e293b; border: 2px solid #ef4444; margin: 20px; padding: 30px; border-radius: 20px; box-shadow: 0 0 30px rgba(239,68,68,0.3);}
     </style>
 </head>
 <body>
+    <div id="pwa-modal">
+        <div class="pwa-box" dir="rtl">
+            <h2 style="color:#ef4444;">📱 تحويل الموقع إلى تطبيق</h2>
+            <p style="font-size:16px;">للحصول على أقصى سرعة وتجربة شاشة كاملة، يرجى إضافة الموقع كـ تطبيق:</p>
+            <hr style="border:1px solid #334155; margin:15px 0;">
+            <p style="color:#60a5fa; font-weight:bold;">🍎 لأجهزة الآيفون (سفاري):</p>
+            <p style="font-size:14px;">اضغط على زر المشاركة بالأسفل <span style="font-size:20px;">⍗</span> ثم اختر <br><b>"إضافة إلى الصفحة الرئيسية ➕"</b>.</p>
+            <br>
+            <p style="color:#34d399; font-weight:bold;">🤖 لأجهزة الأندرويد (كروم):</p>
+            <p style="font-size:14px;">من قائمة المتصفح (النقاط الثلاث) <span style="font-size:20px;">⁝</span> بالأسفل/الأعلى اختر <br><b>"الإضافة للشاشة الرئيسية"</b>.</p>
+            <button onclick="document.getElementById('pwa-modal').style.display='none'" style="margin-top:20px; padding:12px 30px; background:#ef4444; color:#fff; border:none; border-radius:10px; font-weight:bold; font-size:16px; cursor:pointer;">تخطي الدخول للموقع</button>
+        </div>
+    </div>
+
     <div class="glitch-wrapper">
         <h1>DISCORD TICKET</h1>
         <h3>Developer M.R</h3>
     </div>
     <a href="/login" class="red-btn">ENTER SYSTEM</a>
+
+    <script>
+        // عرض رسالة التطبيق إذا لم يكن المستخدم يفتحه كـ PWA
+        if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
+            document.getElementById('pwa-modal').style.display = 'none';
+        } else {
+            // إظهار الرسالة للمستخدمين من المتصفح العادي
+            document.getElementById('pwa-modal').style.display = 'block';
+        }
+    </script>
 </body>
 </html>
 """
@@ -323,6 +374,8 @@ LOGIN_HTML = """
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="manifest" href="/manifest.json">
     <title>بوابة العبور</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@600;800&display=swap');
@@ -352,7 +405,8 @@ PANEL_HTML = """
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="manifest" href="/manifest.json">
     <title>M.R Elite Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -360,24 +414,34 @@ PANEL_HTML = """
         
         :root { --prim: {{ theme_data.prim }}; --sec: {{ theme_data.sec }}; --bg: {{ theme_data.bg }}; }
         
-        body { background: var(--bg); color: #f8fafc; font-family: 'Cairo', sans-serif; text-align: center; margin: 0; padding: 15px; min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; gap: 20px; flex-wrap: wrap;}
+        body { 
+            background: var(--bg); color: #f8fafc; font-family: 'Cairo', sans-serif; text-align: center; 
+            margin: 0; padding: 15px; padding-bottom: 60px; min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; gap: 20px; flex-wrap: wrap;
+            {% if bg_style == 'hacker' %}
+            background-image: url('https://i.gifer.com/XOsX.gif'); background-size: cover; background-attachment: fixed; background-blend-mode: overlay; background-color: rgba(0,0,0,0.8);
+            {% elif bg_style == 'police' %}
+            background-image: url('https://i.pinimg.com/originals/db/bb/bb/dbbbbb89a031e42dd7deea80ceb1a995.gif'); background-size: cover; background-attachment: fixed; background-blend-mode: multiply; background-color: rgba(0,0,0,0.7);
+            {% endif %}
+        }
         
-        .glass-card { background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(20px); max-width: 440px; width: 100%; padding: 26px; border-radius: 20px; border: 1px solid rgba(255,255,255, 0.1); box-shadow: 0 25px 50px rgba(0,0,0,0.9), inset 0 0 20px var(--sec); margin-top: 20px;}
+        .glass-card { background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(20px); max-width: 440px; width: 100%; padding: 26px; border-radius: 20px; border: 1px solid rgba(255,255,255, 0.1); box-shadow: 0 25px 50px rgba(0,0,0,0.9), inset 0 0 20px var(--sec); margin-top: 10px;}
         h1 { color: #fff; font-size: 20px; margin-bottom: 5px; font-weight: 900; }
         .user-tag { color: var(--prim); font-size: 13px; background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 20px; border: 1px solid var(--prim); display: inline-block; margin-bottom: 15px;}
         
-        .badge-container { display: flex; gap: 8px; margin-bottom: 15px; }
-        .glass-badge { flex: 1; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.05); padding: 10px; border-radius: 12px; font-size: 11px; }
-        .glass-badge b { color: var(--prim); font-size: 14px; display: block; margin-top: 3px; }
+        .badge-container { display: flex; gap: 5px; margin-bottom: 15px; }
+        .glass-badge { flex: 1; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.05); padding: 8px; border-radius: 12px; font-size: 11px; }
+        .glass-badge b { color: var(--prim); font-size: 13px; display: block; margin-top: 3px; }
         
-        .chart-container { background: rgba(0,0,0,0.3); border-radius: 14px; padding: 10px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 15px; height: 130px; }
+        .chart-container { background: rgba(0,0,0,0.4); border-radius: 14px; padding: 10px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 15px; height: 130px; }
 
         .btn { display: block; width: 100%; padding: 12px; margin: 6px 0; font-size: 13px; font-weight: 700; border: none; border-radius: 12px; cursor: pointer; transition: 0.3s; font-family: 'Cairo'; color: #fff;}
         .btn-start { background: linear-gradient(135deg, #059669, #047857); }
         .btn-stop { background: linear-gradient(135deg, #dc2626, #991b1b); }
         .btn-secondary { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); }
-        
-        .config-section { background: rgba(0,0,0,0.4); padding: 14px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.05); text-align: right;}
+        .btn-panic { background: #991b1b; border: 2px solid #ef4444; color: #fff; font-size: 14px; margin-top: 10px; box-shadow: 0 0 15px rgba(239,68,68,0.5);}
+        .btn-panic:hover { background: #ef4444; box-shadow: 0 0 30px rgba(239,68,68,0.9);}
+
+        .config-section { background: rgba(0,0,0,0.5); padding: 14px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.05); text-align: right;}
         .config-title { color: var(--prim); font-size: 11px; margin-bottom: 4px; font-weight: 700; }
         input, select, textarea { width: 100%; padding: 10px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 10px; box-sizing: border-box; font-size: 11px; margin-bottom: 8px; font-family: 'Cairo'; outline: none;}
         input:focus, select:focus, textarea:focus { border-color: var(--prim); }
@@ -385,7 +449,7 @@ PANEL_HTML = """
 
         .log-box { background: #000; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 10px; height: 100px; overflow-y: auto; text-align: right; font-size: 11px; color: #94a3b8; margin-top: 10px; }
         
-        .ghost-panel { background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(20px); max-width: 350px; width: 100%; padding: 20px; border-radius: 20px; border: 1px solid rgba(255,255,255, 0.1); box-shadow: 0 25px 50px rgba(0,0,0,0.9); margin-top: 20px; display: flex; flex-direction: column; height: 620px;}
+        .ghost-panel { background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(20px); max-width: 350px; width: 100%; padding: 20px; border-radius: 20px; border: 1px solid rgba(255,255,255, 0.1); box-shadow: 0 25px 50px rgba(0,0,0,0.9); margin-top: 10px; display: flex; flex-direction: column; height: 600px;}
         .ghost-header { font-weight: 900; color: #e2e8f0; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; margin-bottom: 10px;}
         .ticket-list { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; max-height: 80px; overflow-y: auto; }
         .tkt-btn { background: rgba(255,255,255,0.1); border: none; color: #94a3b8; padding: 5px 10px; border-radius: 8px; cursor: pointer; font-size: 11px; font-family: 'Cairo'; transition: 0.2s;}
@@ -395,17 +459,26 @@ PANEL_HTML = """
         .msg { background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px; word-break: break-word;}
         .msg.bot { background: rgba(37, 99, 235, 0.1); border-right: 3px solid #3b82f6; }
         .msg-author { font-size: 10px; color: var(--prim); font-weight: bold; margin-bottom: 2px;}
+
+        /* Ticker Tape */
+        .ticker-wrap { position: fixed; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.85); border-top: 2px solid var(--prim); color: #fff; padding: 5px 0; font-size: 12px; font-weight: bold; z-index: 100; overflow: hidden; display:flex; align-items:center;}
+        .ticker-title { background: var(--prim); padding: 5px 15px; z-index: 2; position: relative;}
+        .ticker { display: inline-block; white-space: nowrap; animation: ticker 25s linear infinite; padding-left: 100%;}
+        @keyframes ticker { 0% { transform: translate3d(0, 0, 0); } 100% { transform: translate3d(-100%, 0, 0); } }
+        .ticker-item { margin: 0 20px; color: #94a3b8;}
+        .ticker-item span { color: #fff;}
     </style>
 </head>
 <body>
     <div class="glass-card">
-        <h1>M.R SYSTEM</h1>
+        <h1>M.R COMMAND CENTER</h1>
         <div class="user-tag">👤 {{ username }}</div>
         
         <div class="badge-container">
             <div class="glass-badge">إنجاز <b id="count_disp">{{ count }}/{{ max_tickets }}</b></div>
             <div class="glass-badge">السرعة <b id="speed_disp">{{ speed }}s</b></div>
             <div class="glass-badge">التراكمي <b id="total_disp">{{ total_lifetime }}</b></div>
+            <div class="glass-badge" style="border-color:#3b82f6;">البنج الحي <b id="ping_disp" style="color:#3b82f6;">-- ms</b></div>
         </div>
 
         <div class="chart-container"><canvas id="progressChart"></canvas></div>
@@ -416,21 +489,45 @@ PANEL_HTML = """
             </button>
         </form>
 
+        <form action="/panic" method="post" onsubmit="return confirm('هل أنت متأكد من مسح جميع السجلات والإيقاف الفوري؟');">
+            <button type="submit" class="btn btn-panic">🚨 زر الطوارئ المدمّر 🚨</button>
+        </form>
+
         <div class="config-section" style="margin-top:15px;">
             <form action="/update_settings" method="post">
-                <div class="config-title">تخصيص المظهر (Theme):</div>
-                <select name="theme">
-                    {% for k, v in themes.items() %}
-                    <option value="{{ k }}" {% if theme == k %}selected{% endif %}>{{ v.name }}</option>
+                
+                <div style="display:flex; gap:8px;">
+                    <div style="flex:1;">
+                        <div class="config-title">تخصيص المظهر:</div>
+                        <select name="theme">
+                            {% for k, v in themes.items() %}
+                            <option value="{{ k }}" {% if theme == k %}selected{% endif %}>{{ v.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div style="flex:1;">
+                        <div class="config-title">الخلفية الحية:</div>
+                        <select name="bg_style">
+                            {% for k, v in backgrounds.items() %}
+                            <option value="{{ k }}" {% if bg_style == k %}selected{% endif %}>{{ v }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="config-title">التنبيه الصوتي (عند اصطياد تكت):</div>
+                <select name="audio_alert">
+                    {% for k, v in audios.items() %}
+                    <option value="{{ k }}" {% if audio_alert == k %}selected{% endif %}>{{ v }}</option>
                     {% endfor %}
                 </select>
 
                 <div class="config-title">نوع الشكاوي المستهدفة:</div>
                 <select name="ticket_filter">
                     <option value="all" {% if ticket_filter == 'all' %}selected{% endif %}>🌐 جميع التكتات (All Tickets)</option>
-                    <option value="administrative" {% if ticket_filter == 'administrative' %}selected{% endif %}>🛡️ الشكاوى الإدارية (1353444395575414844)</option>
-                    <option value="players" {% if ticket_filter == 'players' %}selected{% endif %}>👤 شكاوى اللاعبين (1353444390387060736)</option>
-                    <option value="factions" {% if ticket_filter == 'factions' %}selected{% endif %}>🎖️ شكاوى قائدات الفصائل (1353444400679747665)</option>
+                    <option value="administrative" {% if ticket_filter == 'administrative' %}selected{% endif %}>🛡️ الشكاوى الإدارية</option>
+                    <option value="players" {% if ticket_filter == 'players' %}selected{% endif %}>👤 شكاوى اللاعبين</option>
+                    <option value="factions" {% if ticket_filter == 'factions' %}selected{% endif %}>🎖️ شكاوى قائدات الفصائل</option>
                 </select>
                 
                 <div style="display:flex; gap:8px;">
@@ -446,7 +543,7 @@ PANEL_HTML = """
 
         <div style="display: flex; gap: 8px; margin: 10px 0;">
             <form action="/token" method="get" style="flex:1;"><button class="btn btn-secondary" style="margin:0;">🔑 التوكن</button></form>
-            <form action="/reset_all" method="post" onsubmit="return confirm('تصفير؟');" style="flex:1;"><button class="btn btn-secondary" style="margin:0; color:#ef4444;">🗑️ تصفير</button></form>
+            <form action="/reset_all" method="post" onsubmit="return confirm('تصفير العداد؟');" style="flex:1;"><button class="btn btn-secondary" style="margin:0; color:#ef4444;">🗑️ تصفير</button></form>
         </div>
 
         <div class="log-box" id="log_box">{% for item in logs %}<div>• {{ item | safe }}</div>{% else %}<div>النظام جاهز...</div>{% endfor %}</div>
@@ -459,6 +556,17 @@ PANEL_HTML = """
         <div class="chat-box" id="chat_box"><div style="color:#475569; text-align:center; margin-top:50%;">اختر تكت من الأعلى لمراقبة الرسائل...</div></div>
     </div>
 
+    <!-- Ticker Tape -->
+    <div class="ticker-wrap">
+        <div class="ticker-title">عاجل ⚡</div>
+        <div class="ticker" id="ticker_content">
+            لا توجد تكتات مستلمة بعد...
+        </div>
+    </div>
+
+    <!-- Audio Player -->
+    <audio id="alert_audio" style="display:none;"></audio>
+
     <script>
         var ctx = document.getElementById('progressChart').getContext('2d');
         var myChart = new Chart(ctx, {
@@ -468,6 +576,22 @@ PANEL_HTML = """
         });
 
         let currentActiveTicket = null;
+        let lastCount = {{ count }};
+        let audioType = "{{ audio_alert }}";
+
+        const audioUrls = {
+            "reload": "https://www.myinstants.com/media/sounds/gun-reload.mp3",
+            "discord": "https://www.myinstants.com/media/sounds/discord-notification.mp3",
+            "bell": "https://www.myinstants.com/media/sounds/metal-gear-solid-alert.mp3"
+        };
+
+        function playAlert() {
+            if(audioType && audioType !== "none" && audioUrls[audioType]) {
+                let au = document.getElementById('alert_audio');
+                au.src = audioUrls[audioType];
+                au.play().catch(e => console.log("Audio play blocked by browser."));
+            }
+        }
 
         function loadChat(ch_id) {
             currentActiveTicket = ch_id;
@@ -512,11 +636,27 @@ PANEL_HTML = """
             } catch(e) {}
         }
 
+        async function fetchPing() {
+            try {
+                let res = await fetch('/api/ping');
+                let data = await res.json();
+                document.getElementById('ping_disp').innerText = data.ping + ' ms';
+            } catch(e) {}
+        }
+
         setInterval(async () => {
             try {
                 let res = await fetch('/api/status');
                 let data = await res.json();
                 
+                // تشغيل الصوت إذا زاد الإنجاز
+                if(data.count > lastCount) {
+                    playAlert();
+                    lastCount = data.count;
+                } else if (data.count < lastCount) {
+                    lastCount = data.count; // in case of reset
+                }
+
                 document.getElementById('count_disp').innerText = data.count + '/' + data.max_tickets;
                 document.getElementById('speed_disp').innerText = data.speed + 'ث';
                 document.getElementById('total_disp').innerText = data.total;
@@ -537,15 +677,24 @@ PANEL_HTML = """
                 myChart.update();
 
                 let tktsHtml = '';
+                let tickerHtml = '';
                 data.history.forEach(t => {
                     let activeCls = (currentActiveTicket == t.id) ? 'active' : '';
                     tktsHtml += `<button id="btn_${t.id}" class="tkt-btn ${activeCls}" onclick="loadChat('${t.id}')">#${t.name}</button>`;
+                    tickerHtml += `<span class="ticker-item">✅ تم استلام <span>#${t.name}</span> في تمام <span>${t.time}</span></span>`;
                 });
+                
                 if(tktsHtml === '') tktsHtml = '<div style="color:#64748b; font-size:11px;">لم يتم استلام تكتات بعد</div>';
                 document.getElementById('ticket_list').innerHTML = tktsHtml;
+
+                if(tickerHtml !== '') document.getElementById('ticker_content').innerHTML = tickerHtml;
+
             } catch(e) {}
         }, 2000); 
+
         setInterval(fetchChat, 3000);
+        setInterval(fetchPing, 5000); // تحديث البنج كل 5 ثواني
+        fetchPing(); // تحديث فوري أول مرة
     </script>
 </body>
 </html>
@@ -586,6 +735,10 @@ MASTER_HTML = """
 </html>
 """
 
+@app.route('/manifest.json')
+def manifest():
+    return app.response_class(response=MANIFEST_JSON, mimetype='application/json')
+
 @app.route('/')
 def index():
     return render_template_string(LANDING_HTML)
@@ -608,7 +761,7 @@ def set_token():
         user_sessions[session['user']]["token"] = request.form.get('token').strip()
         save_db(session['user'])
         return redirect(url_for('panel'))
-    return render_template_string("""<!DOCTYPE html><html lang="ar" dir="rtl"><head><style>body{background:#030712;color:#fff;font-family:sans-serif;text-align:center;display:flex;justify-content:center;align-items:center;height:100vh}textarea{width:300px;height:80px;background:#1e293b;color:#fff;border:none;border-radius:10px;padding:10px;outline:none;}textarea:focus{border-color:#3b82f6;}button{margin-top:10px;padding:10px;background:#3b82f6;color:#fff;border:none;border-radius:10px;cursor:pointer;width:320px;font-weight:bold}</style></head><body><div><h2>أدخل التوكن (سيتم تشفيره 🔒)</h2><form method="POST"><textarea name="token" required></textarea><br><button type="submit">حفظ وتأمين 🛡️</button></form></div></body></html>""")
+    return render_template_string("""<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body{background:#030712;color:#fff;font-family:sans-serif;text-align:center;display:flex;justify-content:center;align-items:center;height:100vh}textarea{width:300px;height:80px;background:#1e293b;color:#fff;border:none;border-radius:10px;padding:10px;outline:none;}textarea:focus{border-color:#3b82f6;}button{margin-top:10px;padding:10px;background:#3b82f6;color:#fff;border:none;border-radius:10px;cursor:pointer;width:320px;font-weight:bold}</style></head><body><div><h2>أدخل التوكن (سيتم تشفيره 🔒)</h2><form method="POST"><textarea name="token" required></textarea><br><button type="submit">حفظ وتأمين 🛡️</button></form></div></body></html>""")
 
 @app.route('/panel')
 def panel():
@@ -621,8 +774,19 @@ def panel():
     return render_template_string(PANEL_HTML, username=usr, max_tickets=d["max_tickets"], count=d["count"], speed=d["speed"], 
                                   message=d["message"], webhook=d.get("webhook",""), theme=theme_key, 
                                   themes=THEMES, theme_data=theme_data,
+                                  backgrounds=BACKGROUNDS, bg_style=d.get("bg_style", "solid"),
+                                  audios=AUDIO_ALERTS, audio_alert=d.get("audio_alert", "none"),
                                   ticket_filter=d.get("ticket_filter", "all"),
                                   running=d["running"], total_lifetime=d["total_lifetime"], logs=d["logs"])
+
+@app.route('/api/ping')
+def api_ping():
+    start_time = time.time()
+    try: 
+        requests.get("https://discord.com/api/v9/gateway", timeout=2)
+    except: pass
+    ms = int((time.time() - start_time) * 1000)
+    return jsonify({"ping": ms})
 
 @app.route('/api/status')
 def api_status():
@@ -665,12 +829,24 @@ def toggle():
         else: user_sessions[usr]["running"] = False
     return redirect(url_for('panel'))
 
+@app.route('/panic', methods=['POST'])
+def panic():
+    if 'user' in session:
+        usr = session['user']
+        user_sessions[usr]["running"] = False
+        user_sessions[usr]["logs"] = ["🛑 تم تفعيل زر الطوارئ! تم الإيقاف ومسح الأدلة."]
+        user_sessions[usr]["claimed_history"] = []
+        save_db(usr)
+    return redirect(url_for('panel'))
+
 @app.route('/update_settings', methods=['POST'])
 def update_settings():
     if 'user' in session:
         usr = session['user']
         user_sessions[usr]["message"] = request.form.get('custom_msg', '').strip()
         user_sessions[usr]["theme"] = request.form.get('theme', 'lynwood')
+        user_sessions[usr]["bg_style"] = request.form.get('bg_style', 'solid')
+        user_sessions[usr]["audio_alert"] = request.form.get('audio_alert', 'none')
         user_sessions[usr]["ticket_filter"] = request.form.get('ticket_filter', 'all')
         try:
             user_sessions[usr]["max_tickets"] = int(request.form.get('max_tickets', 10))
