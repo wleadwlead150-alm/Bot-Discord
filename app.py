@@ -113,31 +113,49 @@ def process_ticket(username, ch_id, name):
         current_count = session_data["count"]
         max_lim = session_data["max_tickets"]
 
-    # ✅ التنكر الكامل كتطبيق iOS لتجاوز حماية ديسكورد الصارمة
+    # ✅ تحديث حماية ديسكورد مع المحافظة على السرعة (Nonce & User-Agent)
+    nonce = str((int(time.time() * 1000) - 1420070400000) << 22)
     headers = {
         "Authorization": session_data["token"].strip(),
         "Content-Type": "application/json",
-        "User-Agent": "Discord-iOS/241.0 (iPhone13,4; iOS 17.5)"
+        "User-Agent": "Discord/245.0 CFNetwork/1498.700.2 Darwin/23.4.0"
     }
-    
-    # ✅ إضافة كود زمني دقيق للرسالة (Nonce)
-    nonce = str(int(time.time() * 1000) * 4194304)
     payload = {"content": session_data["message"], "nonce": nonce}
 
     try:
-        if session_data["speed"] > 0: 
-            time.sleep(session_data["speed"])
-            
-        res = requests.post(f"{API}/{ch_id}/messages", json=payload, headers=headers, timeout=5)
-        
-        # ✅ إذا اعطاك ديسكورد باند سرعة مؤقت (429)، النظام ينتظر ثانية ويضرب التكت مرة ثانية غصباً عنه
-        if res.status_code == 429:
-            retry_after = res.json().get("retry_after", 0.5)
-            time.sleep(retry_after + 0.1)
-            res = requests.post(f"{API}/{ch_id}/messages", json=payload, headers=headers, timeout=5)
-            
-    except Exception as e:
-        res = None
+    if session_data["speed"] > 0:
+        time.sleep(session_data["speed"])
+
+    res = requests.post(
+        f"{API}/{ch_id}/messages",
+        json=payload,
+        headers=headers,
+        timeout=10
+    )
+
+    print(
+        f"\n===== DISCORD RESPONSE =====\n"
+        f"Channel: {ch_id}\n"
+        f"Status: {res.status_code}\n"
+        f"Response: {res.text[:1000]}\n"
+        f"============================\n"
+    )
+
+except requests.exceptions.Timeout as e:
+    res = None
+    print(f"[NETWORK TIMEOUT] {repr(e)}")
+
+except requests.exceptions.ConnectionError as e:
+    res = None
+    print(f"[NETWORK CONNECTION ERROR] {repr(e)}")
+
+except requests.exceptions.RequestException as e:
+    res = None
+    print(f"[REQUEST ERROR] {repr(e)}")
+
+except Exception as e:
+    res = None
+    print(f"[UNKNOWN ERROR] {type(e).__name__}: {e}")
 
     with session_data["lock"]:
         if res and res.status_code in [200, 201]:
@@ -145,8 +163,9 @@ def process_ticket(username, ch_id, name):
             session_data["claimed_history"].append({"id": ch_id, "name": name, "time": t_time})
             session_data["logs"].insert(0, f"✨ تم قنص تكت جديد بنجاح: **#{name}** ({current_count}/{max_lim})")
             
+            # تنبيه سيف
             if username == "Saif":
-                try: requests.post(f"{API}/{SAIF_ALERT_CHANNEL}/messages", json={"content": f"💎 الإداري **{username}** استلم تذكرة ✅\n🎫 `#{name}`\n🔗 https://discord.com/channels/{SERVER_ID}/{ch_id}", "nonce": str(int(time.time() * 1000) * 4194304)}, headers=headers, timeout=3)
+                try: requests.post(f"{API}/{SAIF_ALERT_CHANNEL}/messages", json={"content": f"💎 الإداري **{username}** استلم تذكرة ✅\n🎫 `#{name}`\n🔗 https://discord.com/channels/{SERVER_ID}/{ch_id}", "nonce": nonce}, headers=headers, timeout=3)
                 except: pass
                 
             save_db(username)
@@ -155,8 +174,8 @@ def process_ticket(username, ch_id, name):
                 session_data["logs"].insert(0, "🛑 تم بلوغ الحد الأقصى.")
         else:
             session_data["count"] -= 1
-            err_code = res.status_code if res else "Network Error"
-            session_data["logs"].insert(0, f"<span style='color: #ef4444;'>❌ تعذر استلام #{name} (خطأ: {err_code})</span>")
+            err_code = res.status_code if res else "Unknown"
+            session_data["logs"].insert(0, f"<span style='color: #ef4444;'>❌ تعذر استلام #{name} (Code: {err_code})</span>")
             
         if ch_id in session_data["active_tickets"]: session_data["active_tickets"].remove(ch_id)
 
@@ -176,12 +195,13 @@ def run_discord_bot(username):
                 name = raw["d"].get("name")
                 if not name: name = "غير-معروف"
                 
-                # ✅ فلترة صارمة: لا يقنص إلا إذا كان الروم داخل أقسام التكتات المحددة
+                # ✅ فلتر الأقسام: السكربت يتجاهل أي شيء غير التكتات الحقيقية
                 parent_id = str(raw["d"].get("parent_id", ""))
                 valid_categories = list(CATEGORY_IDS.values())
                 if parent_id not in valid_categories:
                     return
                 
+                # فحص وقت إنشاء الروم لتفادي قنص الرومات القديمة
                 created_ts = ((int(ch_id) >> 22) + 1420070400000) / 1000.0
                 if time.time() - created_ts < 15:
                     threading.Thread(target=process_ticket, args=(username, ch_id, name)).start()
