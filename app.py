@@ -122,7 +122,10 @@ def process_ticket(username, ch_id, name):
     }
     payload = {"content": session_data["message"], "nonce": nonce}
 
-    try:
+    }
+payload = {"content": session_data["message"], "nonce": nonce}
+
+try:
     if session_data["speed"] > 0:
         time.sleep(session_data["speed"])
 
