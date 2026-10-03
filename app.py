@@ -6,6 +6,7 @@ import threading
 import os
 import base64
 import sqlite3
+import random
 from datetime import datetime
 from flask import Flask, render_template_string, request, redirect, url_for, session
 
@@ -34,9 +35,6 @@ THEMES = {
 
 user_sessions = {}
 db_lock = threading.Lock()
-
-# جلسة HTTP عامة لإعادة استخدام اتصالات TCP ومنع أخطاء الـ Network
-http_session = requests.Session()
 
 def cipher(text, encrypt=True):
     if not text: return ""
@@ -122,27 +120,37 @@ def process_ticket(username, ch_id, name):
         "User-Agent": "Discord-iOS/241.0 (iPhone13,4; iOS 17.5)"
     }
     
-    nonce = str(int(time.time() * 1000) * 4194304)
+    # إنشاء رقم تعريف (Nonce) مستحيل التطابق حتى لو فتحت 10 تذاكر في نفس الثانية
+    nonce = str(int(time.time() * 1000000)) + str(random.randint(10000, 99999))
     payload = {"content": session_data["message"], "nonce": nonce}
 
     res = None
+    max_retries = 3 # عدد محاولات الهجوم على التكت إذا قاوم ديسكورد
+    attempts = 0
+    
     try:
         if session_data["speed"] > 0: 
             time.sleep(session_data["speed"])
             
-        # استخدام الجلسة المحسنة لمنع Network Error
-        res = http_session.post(f"{API}/{ch_id}/messages", json=payload, headers=headers, timeout=4)
-        
-        # معالجة حماية الـ Rate Limit تلقائياً
-        if res.status_code == 429:
-            try:
-                data = res.json()
-                retry_after = float(data.get("retry_after", 1.0))
-            except:
-                retry_after = 1.0
-            time.sleep(retry_after + 0.1)
-            res = http_session.post(f"{API}/{ch_id}/messages", json=payload, headers=headers, timeout=4)
+        while attempts < max_retries:
+            # استخدام requests.post المباشر لضمان استقلالية كل Thread وعدم التداخل
+            res = requests.post(f"{API}/{ch_id}/messages", json=payload, headers=headers, timeout=5)
             
+            # اختراق حماية ديسكورد التلقائية وتكرار الهجوم
+            if res.status_code == 429:
+                try:
+                    data = res.json()
+                    retry_after = float(data.get("retry_after", 1.0))
+                except:
+                    retry_after = 1.0
+                time.sleep(retry_after + 0.1)
+                attempts += 1
+                continue
+            elif res.status_code in [200, 201]:
+                break # تم الاختراق والرد بنجاح
+            else:
+                break # خطأ آخر غير الحظر المؤقت
+                
     except Exception as e:
         res = None
 
@@ -154,7 +162,7 @@ def process_ticket(username, ch_id, name):
             
             if username == "Saif":
                 try: 
-                    http_session.post(f"{API}/{SAIF_ALERT_CHANNEL}/messages", json={"content": f"💎 الإداري **{username}** استلم تذكرة ✅\n🎫 `#{name}`\n🔗 https://discord.com/channels/{SERVER_ID}/{ch_id}", "nonce": nonce}, headers=headers, timeout=3)
+                    requests.post(f"{API}/{SAIF_ALERT_CHANNEL}/messages", json={"content": f"💎 الإداري **{username}** استلم تذكرة ✅\n🎫 `#{name}`\n🔗 https://discord.com/channels/{SERVER_ID}/{ch_id}", "nonce": nonce}, headers=headers, timeout=3)
                 except: pass
                 
             save_db(username)
@@ -162,7 +170,7 @@ def process_ticket(username, ch_id, name):
                 session_data["status"] = "stopped"
                 session_data["logs"].insert(0, "🛑 تم بلوغ الحد الأقصى.")
         else:
-            session_data["count"] -= 1
+            session_data["count"] -= 1 # إرجاع العداد لأننا لم ننجح في القنص
             err_code = res.status_code if res else "Connection Drop"
             session_data["logs"].insert(0, f"<span style='color: #ef4444;'>❌ تعذر استلام #{name} (خطأ: {err_code})</span>")
             
@@ -288,7 +296,7 @@ PANEL_HTML = """
             {% if status == 'stopped' %}
                 <button type="submit" name="new_status" value="running" class="btn btn-start">تشغيل النظام 🚀</button>
             {% else %}
-                {% if status == 'running' %}<button type="submit" name="new_status" value="paused" class="btn btn-pause">استراحة ⏸️️</button>
+                {% if status == 'running' %}<button type="submit" name="new_status" value="paused" class="btn btn-pause">استراحة ⏸</button>
                 {% else %}<button type="submit" name="new_status" value="running" class="btn btn-start">استئناف ▶️</button>{% endif %}
                 <button type="submit" name="new_status" value="stopped" class="btn btn-stop" style="flex: 0.5;">إيقاف 🛑</button>
             {% endif %}
