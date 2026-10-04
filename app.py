@@ -13,7 +13,6 @@ import http.server
 import socketserver
 import threading
 
-# --- سيرفر ويب وهمي لإرضاء منصة Render وفتح الـ Port ---
 PORT = int(os.environ.get("PORT", 10000))
 
 class DummyHandler(http.server.SimpleHTTPRequestHandler):
@@ -29,7 +28,6 @@ def run_web_server():
         httpd.serve_forever()
 
 threading.Thread(target=run_web_server, daemon=True).start()
-# -----------------------------------------------------
 
 TOKEN_BOT = os.environ.get("DISCORD_BOT_TOKEN", "ضع_توكن_بوتك_هنا")
 
@@ -43,7 +41,6 @@ CATEGORY_IDS = {
     "factions": "1353444400679747665"
 }
 
-# الحسابات القدماء المعتمدة حصرياً
 INITIAL_USERS = {
     "Saif": "12345678", "Marshall": "oopp0099", "Youssef": "oopp009987",
     "Kara": "oopp00998", "isso": "12345678", "Azmy": "12345678", "Dark": "123456789"
@@ -116,7 +113,6 @@ class MRClient(discord.Client):
 
 client = MRClient()
 
-# مودال التحقق من القائمة الحصرية للقدماء
 class RestrictedLoginModal(discord.ui.Modal, title="🔐 تسجيل دخول القدماء الحصري"):
     username_input = discord.ui.TextInput(label="اسم المستخدم", placeholder="اكتب اسمك المعتمد...", required=True)
     password_input = discord.ui.TextInput(label="كلمة المرور", style=discord.TextStyle.short, placeholder="رمز المرور...", required=True)
@@ -125,7 +121,6 @@ class RestrictedLoginModal(discord.ui.Modal, title="🔐 تسجيل دخول ا�
         uname = self.username_input.value.strip()
         pwd = self.password_input.value.strip()
         
-        # التحقق هل الاسم موجود في القدماء وكلمة المرور صحيحة
         if uname in INITIAL_USERS and INITIAL_USERS[uname] == pwd:
             data = get_user_data(uname)
             discord_uid = str(interaction.user.id)
@@ -172,9 +167,9 @@ class MessageModal(discord.ui.Modal, title="💬 تعديل رسالة استل�
         await interaction.response.send_message("✅ تم تحديث رسالة الاستلام!", ephemeral=True)
         await show_main_panel(interaction, self.username, edit=True)
 
-class SettingsModal(discord.ui.Modal, title="⚙️ إعدادات السرعة والحد الأقصى"):
+class SettingsModal(discord.ui.Modal, title="⚙️ إعدادات السرعة والهدف"):
     speed_input = discord.ui.TextInput(label="السرعة بالثواني", placeholder="0.5", required=True)
-    max_input = discord.ui.TextInput(label="الحد الأقصى للتكتات", placeholder="10", required=True)
+    max_input = discord.ui.TextInput(label="الهدف (الحد الأقصى)", placeholder="10", required=True)
 
     def __init__(self, username):
         super().__init__()
@@ -185,10 +180,10 @@ class SettingsModal(discord.ui.Modal, title="⚙️ إعدادات السرعة 
             active_sessions[self.username]["speed"] = float(self.speed_input.value)
             active_sessions[self.username]["max_tickets"] = int(self.max_input.value)
             save_user_data(self.username, active_sessions[self.username])
-            await interaction.response.send_message("✅ تم حفظ الإعدادات!", ephemeral=True)
+            await interaction.response.send_message("✅ تم تحديث الهدف والسرعة بنجاح!", ephemeral=True)
             await show_main_panel(interaction, self.username, edit=True)
         except ValueError:
-            await interaction.response.send_message("❌ خطأ في الإدخال.", ephemeral=True)
+            await interaction.response.send_message("❌ خطأ في القيم المدخلة.", ephemeral=True)
 
 class MRView(discord.ui.View):
     def __init__(self, username):
@@ -208,18 +203,20 @@ class MRView(discord.ui.View):
         d["status"] = "running"
         if d["count"] >= d["max_tickets"]: d["count"] = 0
         save_user_data(self.username, d)
+        
+        # تحديث اللوحة فوراً لتتحول إلى نشط
+        await show_main_panel(interaction, self.username, edit=True, custom_interaction=interaction)
+        
+        # تشغيل محرك القنص في الخلفية
         asyncio.create_task(run_gateway_sniper(self.username, interaction.client))
-        await interaction.response.send_message("🚀 تم تفعيل محرك القنص!", ephemeral=True)
-        await show_main_panel(interaction, self.username, edit=True)
 
     @discord.ui.button(label="🛑 إيقاف", style=discord.ButtonStyle.danger, row=1)
     async def stop_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         active_sessions[self.username]["status"] = "stopped"
         save_user_data(self.username, active_sessions[self.username])
-        await interaction.response.send_message("🛑 تم إيقاف النظام.", ephemeral=True)
-        await show_main_panel(interaction, self.username, edit=True)
+        await show_main_panel(interaction, self.username, edit=True, custom_interaction=interaction)
 
-    @discord.ui.button(label="⚙️ إعدادات السرعة والحد", style=discord.ButtonStyle.primary, row=2)
+    @discord.ui.button(label="⚙️ تعديل السرعة والهدف", style=discord.ButtonStyle.primary, row=2)
     async def settings_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(SettingsModal(self.username))
 
@@ -227,7 +224,7 @@ class MRView(discord.ui.View):
     async def msg_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(MessageModal(self.username))
 
-async def show_main_panel(interaction: discord.Interaction, username, edit=False):
+async def show_main_panel(interaction: discord.Interaction, username, edit=False, custom_interaction=None):
     d = active_sessions[username]
     status_text = "نشط 🚀" if d["status"] == "running" else "متوقف 🛑"
     status_color = discord.Color.green() if d["status"] == "running" else discord.Color.red()
@@ -240,11 +237,23 @@ async def show_main_panel(interaction: discord.Interaction, username, edit=False
     logs_str = "\n".join(d["logs"][:5]) if d["logs"] else "• النظام جاهز..."
     embed.add_field(name="📜 السجلات (LOGS)", value=f"```{logs_str}```", inline=False)
 
+    target_interaction = custom_interaction or interaction
     if edit:
-        try: await interaction.message.edit(embed=embed, view=MRView(username))
-        except: pass
+        try: 
+            if not target_interaction.response.is_done():
+                await target_interaction.response.edit_message(embed=embed, view=MRView(username))
+            else:
+                await target_interaction.message.edit(embed=embed, view=MRView(username))
+        except: 
+            try:
+                await interaction.message.edit(embed=embed, view=MRView(username))
+            except:
+                pass
     else:
-        await interaction.followup.send(embed=embed, view=MRView(username), ephemeral=True)
+        try:
+            await interaction.followup.send(embed=embed, view=MRView(username), ephemeral=True)
+        except:
+            await interaction.response.send_message(embed=embed, view=MRView(username), ephemeral=True)
 
 @client.tree.command(name="mr", description="فتح لوحة التحكم الخاصة بالقدماء فقط")
 async def mr_command(interaction: discord.Interaction):
@@ -271,33 +280,35 @@ async def run_gateway_sniper(username, bot_client):
     }
     gateway_url = "wss://gateway.discord.gg/?v=9&encoding=json"
     
-    async with aiohttp.ClientSession() as session:
+    while d["status"] == "running":
         try:
-            async with session.ws_connect(gateway_url) as ws:
-                async for msg in ws:
-                    if d["status"] == "stopped": break
-                    if msg.type == aiohttp.WSMsgType.TEXT:
-                        data = json.loads(msg.data)
-                        if data.get("op") == 10:
-                            await ws.send_json({
-                                "op": 2,
-                                "d": {
-                                    "token": token,
-                                    "properties": {"os": "iOS", "browser": "Discord Client", "device": "iPhone"},
-                                    "intents": 1 | 512
-                                }
-                            })
-                        if data.get("t") == "CHANNEL_CREATE" and data.get("d", {}).get("guild_id") == SERVER_ID:
-                            ch_data = data["d"]
-                            ch_id = str(ch_data["id"])
-                            name = ch_data.get("name", "غير-معروف")
-                            parent_id = str(ch_data.get("parent_id", ""))
-                            if parent_id in list(CATEGORY_IDS.values()):
-                                created_ts = ((int(ch_id) >> 22) + 1420070400000) / 1000.0
-                                if time.time() - created_ts < 15:
-                                    asyncio.create_task(execute_ticket_claim(username, ch_id, name, headers, bot_client))
+            async with aiohttp.ClientSession() as session:
+                async with session.ws_connect(gateway_url) as ws:
+                    async for msg in ws:
+                        if d["status"] == "stopped": break
+                        if msg.type == aiohttp.WSMsgType.TEXT:
+                            data = json.loads(msg.data)
+                            if data.get("op") == 10:
+                                await ws.send_json({
+                                    "op": 2,
+                                    "d": {
+                                        "token": token,
+                                        "properties": {"os": "iOS", "browser": "Discord Client", "device": "iPhone"},
+                                        "intents": 1 | 512
+                                    }
+                                })
+                            if data.get("t") == "CHANNEL_CREATE" and data.get("d", {}).get("guild_id") == SERVER_ID:
+                                ch_data = data["d"]
+                                ch_id = str(ch_data["id"])
+                                name = ch_data.get("name", "غير-معروف")
+                                parent_id = str(ch_data.get("parent_id", ""))
+                                if parent_id in list(CATEGORY_IDS.values()):
+                                    created_ts = ((int(ch_id) >> 22) + 1420070400000) / 1000.0
+                                    if time.time() - created_ts < 15:
+                                        asyncio.create_task(execute_ticket_claim(username, ch_id, name, headers, bot_client))
         except Exception as e:
-            d["logs"].insert(0, f"❌ خطأ في الاتصال: {str(e)}")
+            d["logs"].insert(0, f"❌ خطأ اتصال، إعادة محاولة...")
+            await asyncio.sleep(2)
 
 async def execute_ticket_claim(username, ch_id, name, headers, bot_client):
     d = active_sessions[username]
@@ -317,35 +328,55 @@ async def execute_ticket_claim(username, ch_id, name, headers, bot_client):
     nonce = str(int(time.time() * 1000000)) + str(random.randint(10000, 99999))
     payload = {"content": d["message"], "nonce": nonce}
 
+    max_retries = 3
+    attempts = 0
+    res = None
+
     async with aiohttp.ClientSession() as session:
-        try:
-            async with session.post(f"{API}/{ch_id}/messages", json=payload, headers=headers) as resp:
-                if resp.status in [200, 201]:
-                    d["logs"].insert(0, f"✨ تم قنص تكت: **#{name}** ({current_count}/{max_lim})")
-                    
-                    for d_uid, uname in logged_in_users.items():
-                        if uname == username:
-                            try:
-                                user_obj = await bot_client.fetch_user(int(d_uid))
-                                ticket_link = f"https://discord.com/channels/{SERVER_ID}/{ch_id}"
-                                await user_obj.send(f"💎 **تم استلام تذكرة بنجاح!**\n🎫 التكت: `#{name}`\n🔗 الرابط: {ticket_link}")
-                            except: pass
-
-                    if username == "Saif":
+        while attempts < max_retries:
+            try:
+                async with session.post(f"{API}/{ch_id}/messages", json=payload, headers=headers) as resp:
+                    res = resp
+                    if resp.status == 429:
                         try:
-                            await session.post(f"{API}/{SAIF_ALERT_CHANNEL}/messages", json={"content": f"💎 الإداري استلم تذكرة ✅\n🎫 `#{name}`\n🔗 https://discord.com/channels/{SERVER_ID}/{ch_id}", "nonce": nonce}, headers=headers)
-                        except: pass
+                            err_data = await resp.json()
+                            retry_after = float(err_data.get("retry_after", 1.0))
+                        except:
+                            retry_after = 1.0
+                        await asyncio.sleep(retry_after + 0.1)
+                        attempts += 1
+                        continue
+                    elif resp.status in [200, 201]:
+                        break
+                    else:
+                        break
+            except:
+                break
 
-                    save_user_data(username, d)
-                    if current_count >= max_lim:
-                        d["status"] = "stopped"
-                        d["logs"].insert(0, "🛑 تم بلوغ الحد الأقصى.")
-                else:
-                    d["count"] -= 1
-                    d["logs"].insert(0, f"❌ تعذر استلام #{name}")
-        except:
+        if res and res.status in [200, 201]:
+            d["logs"].insert(0, f"✨ تم قنص تكت بنجاح: **#{name}** ({current_count}/{max_lim})")
+            
+            for d_uid, uname in logged_in_users.items():
+                if uname == username:
+                    try:
+                        user_obj = await bot_client.fetch_user(int(d_uid))
+                        ticket_link = f"https://discord.com/channels/{SERVER_ID}/{ch_id}"
+                        await user_obj.send(f"💎 **تم استلام تذكرة بنجاح!**\n🎫 التكت: `#{name}`\n🔗 الرابط: {ticket_link}")
+                    except: pass
+
+            if username == "Saif":
+                try:
+                    await session.post(f"{API}/{SAIF_ALERT_CHANNEL}/messages", json={"content": f"💎 الإداري استلم تذكرة ✅\n🎫 `#{name}`\n🔗 https://discord.com/channels/{SERVER_ID}/{ch_id}", "nonce": nonce}, headers=headers)
+                except: pass
+
+            save_user_data(username, d)
+            if current_count >= max_lim:
+                d["status"] = "stopped"
+                d["logs"].insert(0, "🛑 تم بلوغ الهدف الأقصى.")
+        else:
             d["count"] -= 1
-            d["logs"].insert(0, f"❌ خطأ اتصال أثناء القنص.")
+            err_code = res.status if res else "Drop"
+            d["logs"].insert(0, f"❌ تعذر استلام #{name} (خطأ: {err_code})")
 
         if ch_id in d["active_tickets"]: d["active_tickets"].remove(ch_id)
 
