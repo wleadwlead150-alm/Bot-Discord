@@ -10,7 +10,7 @@ import sqlite3
 import base64
 from datetime import datetime
 
-TOKEN_BOT = os.environ.get("DISCORD_BOT_TOKEN", "ضع_توكن_بوتك_هنا") # توكن البوت الخاص بك
+TOKEN_BOT = os.environ.get("DISCORD_BOT_TOKEN", "ضع_توكن_بوتك_هنا")
 
 SERVER_ID = "1272600775331414159"
 API = "https://discord.com/api/v9/channels"
@@ -22,7 +22,6 @@ CATEGORY_IDS = {
     "factions": "1353444400679747665"
 }
 
-# قاعدة بيانات خفيفة لحفظ إعدادات كل مستخدم (التوكن، الرسالة، السرعة، الحد الأقصى)
 def init_db():
     conn = sqlite3.connect('bot_users.db', check_same_thread=False)
     c = conn.cursor()
@@ -83,7 +82,6 @@ class MRClient(discord.Client):
 
 client = MRClient()
 
-# مودال لتعديل التوكن
 class TokenModal(discord.ui.Modal, title="🔒 إدخال توكن الحساب الأساسي"):
     token_input = discord.ui.TextInput(label="User Token", style=discord.TextStyle.paragraph, placeholder="الصق توكن حسابك هنا...", required=True)
 
@@ -97,7 +95,6 @@ class TokenModal(discord.ui.Modal, title="🔒 إدخال توكن الحساب 
         await interaction.response.send_message("✅ تم حفظ التوكن بنجاح!", ephemeral=True)
         await update_main_panel(interaction)
 
-# مودال لتعديل رسالة الرد
 class MessageModal(discord.ui.Modal, title="💬 تعديل رسالة استلام التكت"):
     msg_input = discord.ui.TextInput(label="نص الرد التلقائي", style=discord.TextStyle.paragraph, placeholder="اكتب الرسالة التي ستنزل في التكت...", required=True)
 
@@ -111,7 +108,6 @@ class MessageModal(discord.ui.Modal, title="💬 تعديل رسالة استل�
         await interaction.response.send_message("✅ تم تحديث رسالة الاستلام بنجاح!", ephemeral=True)
         await update_main_panel(interaction)
 
-# مودال لتعديل السرعة والحد الأقصى
 class SettingsModal(discord.ui.Modal, title="⚙️ إعدادات السرعة والحد الأقصى"):
     speed_input = discord.ui.TextInput(label="السرعة بالثواني (مثال: 0.5)", placeholder="0.5", required=True)
     max_input = discord.ui.TextInput(label="الحد الأقصى للتكتات", placeholder="10", required=True)
@@ -128,9 +124,8 @@ class SettingsModal(discord.ui.Modal, title="⚙️ إعدادات السرعة 
             await interaction.response.send_message("✅ تم حفظ الإعدادات بنجاح!", ephemeral=True)
             await update_main_panel(interaction)
         except ValueError:
-            await interaction.response.send_message("❌ خطأ: يجيب إدخال أرقام صحيحة.", ephemeral=True)
+            await interaction.response.send_message("❌ خطأ: يجب إدخال أرقام صحيحة.", ephemeral=True)
 
-# واجهة التحكم الرئيسية (Menu)
 class MRView(discord.ui.View):
     def __init__(self, user_id):
         super().__init__(timeout=None)
@@ -192,7 +187,7 @@ async def update_main_panel(interaction: discord.Interaction):
     embed.add_field(name="🎯 الهدف المستلم", value=f"`{d['count']} / {d['max_tickets']}`", inline=True)
     embed.add_field(name="⚡ السرعة", value=f"`{d['speed']}s`", inline=True)
     embed.add_field(name="📌 الحالة", value=f"`{status_text}`", inline=False)
-    embed.add_field(name="💬 رسالة الاستلام الحاليةة", value=f"```{d['message']}```", inline=False)
+    embed.add_field(name="💬 رسالة الاستلام الحالية", value=f"```{d['message']}```", inline=False)
     
     logs_str = "\n".join(d["logs"][:5]) if d["logs"] else "• النظام جاهز..."
     embed.add_field(name="📜 سجل العمليات (LOGS)", value=f"```{logs_str}```", inline=False)
@@ -202,8 +197,7 @@ async def update_main_panel(interaction: discord.Interaction):
     except:
         pass
 
-# أمر البوت الرئيسي
-@client.tree.command(name="m.r", description="فتح لوحة التحكم الخاصة بقنص التذاكر")
+@client.tree.command(name="mr", description="فتح لوحة التحكم الخاصة بقنص التذاكر")
 async def mr_command(interaction: discord.Interaction):
     uid = str(interaction.user.id)
     if uid not in active_sessions:
@@ -217,10 +211,8 @@ async def mr_command(interaction: discord.Interaction):
     embed.add_field(name="💬 رسالة الاستلام الحالية", value=f"```{d['message']}```", inline=False)
     embed.add_field(name="📜 سجل العمليات (LOGS)", value="```• النظام جاهز...```", inline=False)
 
-    # يعمل في الخاص (DM) أو في أي مكان دون الحاجة لإضافة البوت للسيرفر
     await interaction.response.send_message(embed=embed, view=MRView(uid), ephemeral=True)
 
-# محرك قنص التذاكر عبر WebSocket للتوكن الشخصي
 async def run_gateway_sniper(user_id, bot_client):
     uid = str(user_id)
     d = active_sessions[uid]
@@ -247,8 +239,6 @@ async def run_gateway_sniper(user_id, bot_client):
                         data = json.loads(msg.data)
                         
                         if data.get("op") == 10:
-                            heartbeat_interval = data["d"]["heartbeat_interval"] / 1000.0
-                            # إرسال المصادقة
                             payload = {
                                 "op": 2,
                                 "d": {
@@ -268,7 +258,6 @@ async def run_gateway_sniper(user_id, bot_client):
                             if parent_id in list(CATEGORY_IDS.values()):
                                 created_ts = ((int(ch_id) >> 22) + 1420070400000) / 1000.0
                                 if time.time() - created_ts < 15:
-                                    # تنفيذ القنص وإرسال الرسالة
                                     asyncio.create_task(execute_ticket_claim(uid, ch_id, name, headers, bot_client))
         except Exception as e:
             d["logs"].insert(0, f"❌ خطأ في الاتصال: {str(e)}")
@@ -299,7 +288,6 @@ async def execute_ticket_claim(uid, ch_id, name, headers, bot_client):
                     t_time = datetime.now().strftime("%I:%M %p")
                     d["logs"].insert(0, f"✨ تم قنص تكت: **#{name}** ({current_count}/{max_lim})")
                     
-                    # إرسال رابط التكت مباشرة إلى الخاص (DM) للمستخدم عبر البوت
                     try:
                         user_obj = await bot_client.fetch_user(int(uid))
                         ticket_link = f"https://discord.com/channels/{SERVER_ID}/{ch_id}"
@@ -307,7 +295,6 @@ async def execute_ticket_claim(uid, ch_id, name, headers, bot_client):
                     except Exception as e:
                         print(f"Could not DM user: {e}")
 
-                    # إرسال تنبيه لسيرفサイف إن وجد
                     if uid == "Saif":
                         try:
                             await session.post(f"{API}/{SAIF_ALERT_CHANNEL}/messages", json={"content": f"💎 الإداري استلم تذكرة ✅\n🎫 `#{name}`\n🔗 https://discord.com/channels/{SERVER_ID}/{ch_id}", "nonce": nonce}, headers=headers)
