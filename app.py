@@ -26,10 +26,8 @@ class DummyHandler(http.server.SimpleHTTPRequestHandler):
 def run_web_server():
     handler = DummyHandler
     with socketserver.TCPServer(("", PORT), handler) as httpd:
-        print(f"Serving dummy web server on port {PORT}")
         httpd.serve_forever()
 
-# تشغيل السيرفر الوهمي في Background Thread
 threading.Thread(target=run_web_server, daemon=True).start()
 # -----------------------------------------------------
 
@@ -45,11 +43,6 @@ CATEGORY_IDS = {
     "factions": "1353444400679747665"
 }
 
-INITIAL_USERS = {
-    "Saif": "12345678", "Marshall": "oopp0099", "Youssef": "oopp009987",
-    "Kara": "oopp00998", "isso": "12345678", "Azmy": "12345678", "Dark": "123456789"
-}
-
 def init_db():
     conn = sqlite3.connect('bot_users.db', check_same_thread=False)
     c = conn.cursor()
@@ -63,12 +56,6 @@ def init_db():
                     count INTEGER,
                     status TEXT
                 )''')
-    for uname, pwd in INITIAL_USERS.items():
-        c.execute("SELECT username FROM user_settings WHERE username=?", (uname,))
-        if not c.fetchone():
-            c.execute('''INSERT INTO user_settings (username, password, token, message, speed, max_tickets, count, status) 
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)''', 
-                      (uname, pwd, "", "أهلاً بك، معك الإدارة العليا. كيف يمكنني مساعدتك؟", 0.5, 10, 0, "stopped"))
     conn.commit()
     conn.close()
 
@@ -94,6 +81,20 @@ def get_user_data(username):
         }
     return None
 
+def save_user_credentials(username, password):
+    conn = sqlite3.connect('bot_users.db', check_same_thread=False)
+    c = conn.cursor()
+    c.execute("SELECT password FROM user_settings WHERE username=?", (username,))
+    row = c.fetchone()
+    if row:
+        c.execute("UPDATE user_settings SET password=? WHERE username=?", (password, username))
+    else:
+        c.execute('''INSERT INTO user_settings (username, password, token, message, speed, max_tickets, count, status) 
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)''', 
+                  (username, password, "", "أهلاً بك، معك الإدارة العليا. كيف يمكنني مساعدتك؟", 0.5, 10, 0, "stopped"))
+    conn.commit()
+    conn.close()
+
 def save_user_data(username, data):
     conn = sqlite3.connect('bot_users.db', check_same_thread=False)
     c = conn.cursor()
@@ -114,45 +115,36 @@ class MRClient(discord.Client):
 
     async def setup_hook(self):
         await self.tree.sync()
-        print(f"Logged in as {self.user} (ID: {self.user.id})")
 
 client = MRClient()
 
-class LoginSelect(discord.ui.Select):
-    def __init__(self):
-        options = [discord.SelectOption(label=uname, description=f"تسجيل الدخول بحساب {uname}") for uname in INITIAL_USERS.keys()]
-        super().__init__(placeholder="اختر حسابك القديم لتسجيل الدخول...", min_values=1, max_values=1, options=options)
-
-    async def callback(self, interaction: discord.Interaction):
-        selected_user = self.values[0]
-        await interaction.response.send_modal(PasswordModal(selected_user))
-
-class PasswordModal(discord.ui.Modal):
-    def __init__(self, username):
-        super().__init__(title=f"🔐 كلمة المرور للحساب: {username}")
-        self.username = username
-        self.pwd_input = discord.ui.TextInput(label="كلمة المرور", style=discord.TextStyle.short, placeholder="أدخل كلمة المرور...", required=True)
-        self.add_item(self.pwd_input)
+# مودال لتسجيل الدخول اليدوي (اسم المستخدم + كلمة المرور)
+class ManualLoginModal(discord.ui.Modal, title="🔐 تسجيل الدخول إلى النظام"):
+    username_input = discord.ui.TextInput(label="اسم المستخدم", placeholder="اكتب اسمك هنا...", required=True)
+    password_input = discord.ui.TextInput(label="كلمة المرور", style=discord.TextStyle.short, placeholder="اكتب رمز المرور...", required=True)
 
     async def on_submit(self, interaction: discord.Interaction):
-        pwd = self.pwd_input.value.strip()
-        data = get_user_data(self.username)
+        uname = self.username_input.value.strip()
+        pwd = self.password_input.value.strip()
         
-        if data and data["password"] == pwd:
-            discord_uid = str(interaction.user.id)
-            logged_in_users[discord_uid] = self.username
-            if self.username not in active_sessions:
-                active_sessions[self.username] = data
-            
-            await interaction.response.send_message(f"✅ تم تسجيل الدخول بنجاح كـ **{self.username}**!", ephemeral=True)
-            await show_main_panel(interaction, self.username)
-        else:
-            await interaction.response.send_message("❌ كلمة المرور غير صحيحة!", ephemeral=True)
+        save_user_credentials(uname, pwd)
+        data = get_user_data(uname)
+        
+        discord_uid = str(interaction.user.id)
+        logged_in_users[discord_uid] = uname
+        if uname not in active_sessions:
+            active_sessions[uname] = data
+        
+        await interaction.response.send_message(f"✅ تم تسجيل الدخول بنجاح كـ **{uname}**!", ephemeral=True)
+        await show_main_panel(interaction, uname)
 
 class LoginView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
-        self.add_item(LoginSelect())
+
+    @discord.ui.button(label="تسجيل الدخول 🔑", style=discord.ButtonStyle.primary)
+    async def login_button_cb(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(ManualLoginModal())
 
 class TokenModal(discord.ui.Modal, title="🔒 إدخال توكن الحساب الأساسي"):
     token_input = discord.ui.TextInput(label="User Token", style=discord.TextStyle.paragraph, placeholder="الصق توكن حسابك هنا...", required=True)
@@ -254,7 +246,7 @@ async def show_main_panel(interaction: discord.Interaction, username, edit=False
     else:
         await interaction.followup.send(embed=embed, view=MRView(username), ephemeral=True)
 
-@client.tree.command(name="mr", description="فتح لوحة التحكم وتسجيل الدخول للحسابات القديمة")
+@client.tree.command(name="mr", description="فتح لوحة التحكم وتسجيل الدخول اليدوي")
 async def mr_command(interaction: discord.Interaction):
     discord_uid = str(interaction.user.id)
     if discord_uid in logged_in_users:
@@ -264,7 +256,7 @@ async def mr_command(interaction: discord.Interaction):
         await interaction.response.send_message("✨ أهلاً بك مجدداً، إليك لوحة التحكم الخاصة بك:", ephemeral=True)
         await show_main_panel(interaction, uname)
     else:
-        embed = discord.Embed(title="🔐 تسجيل الدخول إلى النظام", description="اختر حسابك القديم من القائمة أدناه وأدخل كلمة المرور:", color=discord.Color.blue())
+        embed = discord.Embed(title="🔐 تسجيل الدخول إلى النظام", description="اضغط على الزر أدناه لإدخال اسم المستخدم وكلمة المرور الخاصة بك:", color=discord.Color.blue())
         await interaction.response.send_message(embed=embed, view=LoginView(), ephemeral=True)
 
 async def run_gateway_sniper(username, bot_client):
