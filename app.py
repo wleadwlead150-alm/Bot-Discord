@@ -2,6 +2,7 @@ import discord
 from discord import app_commands
 import asyncio
 import requests
+import websocket
 import threading
 import os
 import sqlite3
@@ -106,6 +107,7 @@ logged_in_users = {}
 class MRClient(discord.Client):
     def __init__(self):
         intents = discord.Intents.default()
+        intents.guilds = True
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
 
@@ -167,7 +169,7 @@ class MessageModal(discord.ui.Modal, title="💬 تعديل رسالة استل�
         await interaction.response.send_message("✅ تم تحديث رسالة الاستلام!", ephemeral=True)
         await show_main_panel(interaction, self.username, edit=True, custom_interaction=interaction)
 
-class SettingsModal(discord.ui.Modal, title="⚙️ إعدادات السرعة والهدف"):
+class SettingsModal(discord.ui.Modal, title="⚙️️ إعدادات السرعة والهدف"):
     speed_input = discord.ui.TextInput(label="السرعة بالثواني", placeholder="0.5", required=True)
     max_input = discord.ui.TextInput(label="الهدف (الحد الأقصى)", placeholder="10", required=True)
 
@@ -206,8 +208,8 @@ class MRView(discord.ui.View):
         
         await show_main_panel(interaction, self.username, edit=True, custom_interaction=interaction)
         
-        # تشغيل محرك القنص الفوري المعتمد على الفحص السريع
-        threading.Thread(target=run_polling_sniper, args=(self.username, interaction.client), daemon=True).start()
+        # تشغيل محرك الاتصال اللحظي WebSocket
+        threading.Thread(target=run_discord_gateway, args=(self.username, interaction.client), daemon=True).start()
 
     @discord.ui.button(label="🛑 إيقاف", style=discord.ButtonStyle.danger, row=1)
     async def stop_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -267,52 +269,7 @@ async def mr_command(interaction: discord.Interaction):
         embed = discord.Embed(title="🔐 بوابة القدماء الحصرية", description="هذا النظام مخصص للقدماء فقط. اضغط أدناه لإدخال اسمك وكلمة المرور المعتمدة:", color=discord.Color.dark_red())
         await interaction.response.send_message(embed=embed, view=LoginView(), ephemeral=True)
 
-# --- محرك القنص الفوري عبر الفحص السريع (Polling) ---
-def run_polling_sniper(username, bot_client):
-    d = active_sessions[username]
-    token = d["token"]
-    d["logs"].insert(0, "🚀 تم تفعيل محرك القنص الفوري السريع...")
-    
-    headers = {
-        "Authorization": token.strip(),
-        "Content-Type": "application/json",
-        "User-Agent": "Discord-iOS/241.0 (iPhone13,4; iOS 17.5)"
-    }
-    
-    seen_channels = set()
-    
-    # جلب القنوات الحالية أولاً لتسجيلها حتى لا يقنص تذاكر قديمة
-    try:
-        res = requests.get(f"{API}/guilds/{SERVER_ID}/channels", headers=headers, timeout=5)
-        if res.status_code == 200:
-            for ch in res.json():
-                seen_channels.add(str(ch["id"]))
-    except:
-        pass
-
-    while d["status"] == "running":
-        try:
-            res = requests.get(f"{API}/guilds/{SERVER_ID}/channels", headers=headers, timeout=5)
-            if res.status_code == 200:
-                channels = res.json()
-                for ch in channels:
-                    if d["status"] != "running": break
-                    ch_id = str(ch["id"])
-                    parent_id = str(ch.get("parent_id", ""))
-                    
-                    if parent_id in list(CATEGORY_IDS.values()) and ch_id not in seen_channels:
-                        seen_channels.add(ch_id)
-                        name = ch.get("name", "غير-معروف")
-                        
-                        # التحقق من أن التكت جديد جداً (أقل من 15 ثانية)
-                        created_ts = ((int(ch_id) >> 22) + 1420070400000) / 1000.0
-                        if time.time() - created_ts < 15:
-                            threading.Thread(target=process_ticket, args=(username, ch_id, name, bot_client), daemon=True).start()
-            
-            time.sleep(0.3) # فحص سريع جداً كل 0.3 ثانية
-        except:
-            time.sleep(1)
-
+# --- محرك القنص اللحظي السريع عبر Gateway WebSocket ---
 def process_ticket(username, ch_id, name, bot_client):
     session_data = active_sessions[username]
     with session_data["lock"]:
@@ -390,8 +347,54 @@ def process_ticket(username, ch_id, name, bot_client):
 async def send_user_dm(bot_client, uid, name, ticket_link):
     try:
         user_obj = await bot_client.fetch_user(uid)
-        await user_obj.send(f"💎 **تم استلام تذكرة بنجاح!**\n🎫 التكت: `#{name}`\n🔗 الرابط: {ticket_link}")
+        await user_obj.send(f"💎 **تم استلاستلام تذكرة بنجاح!**\n🎫 التكت: `#{name}`\n🔗 الرابط: {ticket_link}")
     except:
         pass
+
+def run_discord_gateway(username, bot_client):
+    d = active_sessions[username]
+    token = d["token"]
+    d["logs"].insert(0, "🚀 تم تفعيل محرك القنص اللحظي (Gateway)...")
+
+    def on_message(ws, msg):
+        if d["status"] == "stopped":
+            ws.close()
+            return
+        try:
+            raw = json.loads(msg)
+            if raw.get("op") == 10:
+                ws.send(json.dumps({"op": 1, "d": None}))
+            
+            # التقاط حدث إنشاء قناة جديدة في السيرفر المستهدف فوراً
+            if raw.get("t") == "CHANNEL_CREATE":
+                ch_data = raw.get("d", {})
+                if str(ch_data.get("guild_id")) == SERVER_ID:
+                    ch_id = str(ch_data["id"])
+                    name = ch_data.get("name", "غير-معروف")
+                    parent_id = str(ch_data.get("parent_id", ""))
+                    
+                    if parent_id in list(CATEGORY_IDS.values()):
+                        created_ts = ((int(ch_id) >> 22) + 1420070400000) / 1000.0
+                        if time.time() - created_ts < 15:
+                            threading.Thread(target=process_ticket, args=(username, ch_id, name, bot_client), daemon=True).start()
+        except:
+            pass
+
+    def on_open(ws):
+        ws.send(json.dumps({
+            "op": 2,
+            "d": {
+                "token": token,
+                "properties": {"os": "iOS", "browser": "Discord Client", "device": "iPhone"},
+                "intents": 1 | 512 | 1024 # تفعيل كامل الصلاحيات لقراءة القنوات
+            }
+        }))
+
+    while d["status"] == "running":
+        try:
+            ws = websocket.WebSocketApp("wss://gateway.discord.gg/?v=9&encoding=json", on_open=on_open, on_message=on_message)
+            ws.run_forever(ping_interval=30, ping_timeout=10)
+        except:
+            time.sleep(2)
 
 client.run(TOKEN_BOT)
