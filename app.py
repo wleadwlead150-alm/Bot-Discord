@@ -21,7 +21,7 @@ class DummyHandler(http.server.SimpleHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"M.R Sniper Bot is Alive and Running 💀🔥")
+        self.wfile.write("M.R Sniper Bot is Alive and Running".encode('utf-8'))
 
 def run_web_server():
     handler = DummyHandler
@@ -336,7 +336,7 @@ async def execute_ticket_claim(username, ch_id, name, headers, bot_client):
                             try:
                                 user_obj = await bot_client.fetch_user(int(d_uid))
                                 ticket_link = f"https://discord.com/channels/{SERVER_ID}/{ch_id}"
-                                await user_obj.send(f"💎 **تم استلاستلام تذكرة بنجاح!**\n🎫 التكت: `#{name}`\n🔗 الرابط: {ticket_link}")
+                                await user_obj.send(f"💎 **تم استلام تذكرة بنجاح!**\n🎫 التكت: `#{name}`\n🔗 الرابط: {ticket_link}")
                             except: pass
 
                     if username == "Saif":
