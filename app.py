@@ -9,6 +9,29 @@ import os
 import sqlite3
 import base64
 from datetime import datetime
+import http.server
+import socketserver
+import threading
+
+# --- سيرفر ويب وهمي لإرضاء منصة Render وفتح الـ Port ---
+PORT = int(os.environ.get("PORT", 10000))
+
+class DummyHandler(http.server.SimpleHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b"M.R Sniper Bot is Alive and Running 💀🔥")
+
+def run_web_server():
+    handler = DummyHandler
+    with socketserver.TCPServer(("", PORT), handler) as httpd:
+        print(f"Serving dummy web server on port {PORT}")
+        httpd.serve_forever()
+
+# تشغيل السيرفر الوهمي في Background Thread
+threading.Thread(target=run_web_server, daemon=True).start()
+# -----------------------------------------------------
 
 TOKEN_BOT = os.environ.get("DISCORD_BOT_TOKEN", "ضع_توكن_بوتك_هنا")
 
@@ -81,7 +104,7 @@ def save_user_data(username, data):
     conn.close()
 
 active_sessions = {}
-logged_in_users = {} # ربط كل مستخدم ديسكورد بالحساب الذي سجل به
+logged_in_users = {}
 
 class MRClient(discord.Client):
     def __init__(self):
@@ -95,7 +118,6 @@ class MRClient(discord.Client):
 
 client = MRClient()
 
-# قائمة اختيار الحسابات القديمة
 class LoginSelect(discord.ui.Select):
     def __init__(self):
         options = [discord.SelectOption(label=uname, description=f"تسجيل الدخول بحساب {uname}") for uname in INITIAL_USERS.keys()]
@@ -105,7 +127,6 @@ class LoginSelect(discord.ui.Select):
         selected_user = self.values[0]
         await interaction.response.send_modal(PasswordModal(selected_user))
 
-# مودال كلمة المرور للحساب المحدد
 class PasswordModal(discord.ui.Modal):
     def __init__(self, username):
         super().__init__(title=f"🔐 كلمة المرور للحساب: {username}")
@@ -133,7 +154,6 @@ class LoginView(discord.ui.View):
         super().__init__(timeout=None)
         self.add_item(LoginSelect())
 
-# نافذة إدخال التوكن والتحكم
 class TokenModal(discord.ui.Modal, title="🔒 إدخال توكن الحساب الأساسي"):
     token_input = discord.ui.TextInput(label="User Token", style=discord.TextStyle.paragraph, placeholder="الصق توكن حسابك هنا...", required=True)
 
@@ -311,13 +331,12 @@ async def execute_ticket_claim(username, ch_id, name, headers, bot_client):
                 if resp.status in [200, 201]:
                     d["logs"].insert(0, f"✨ تم قنص تكت: **#{name}** ({current_count}/{max_lim})")
                     
-                    # إرسال إشعار خاص للمستخدم الذي قام بتسجيل الدخول
                     for d_uid, uname in logged_in_users.items():
                         if uname == username:
                             try:
                                 user_obj = await bot_client.fetch_user(int(d_uid))
                                 ticket_link = f"https://discord.com/channels/{SERVER_ID}/{ch_id}"
-                                await user_obj.send(f"💎 **تم استلام تذكرة بنجاح!**\n🎫 التكت: `#{name}`\n🔗 الرابط: {ticket_link}")
+                                await user_obj.send(f"💎 **تم استلاستلام تذكرة بنجاح!**\n🎫 التكت: `#{name}`\n🔗 الرابط: {ticket_link}")
                             except: pass
 
                     if username == "Saif":
