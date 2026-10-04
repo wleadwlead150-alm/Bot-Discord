@@ -43,6 +43,12 @@ CATEGORY_IDS = {
     "factions": "1353444400679747665"
 }
 
+# الحسابات القدماء المعتمدة حصرياً
+INITIAL_USERS = {
+    "Saif": "12345678", "Marshall": "oopp0099", "Youssef": "oopp009987",
+    "Kara": "oopp00998", "isso": "12345678", "Azmy": "12345678", "Dark": "123456789"
+}
+
 def init_db():
     conn = sqlite3.connect('bot_users.db', check_same_thread=False)
     c = conn.cursor()
@@ -56,6 +62,12 @@ def init_db():
                     count INTEGER,
                     status TEXT
                 )''')
+    for uname, pwd in INITIAL_USERS.items():
+        c.execute("SELECT username FROM user_settings WHERE username=?", (uname,))
+        if not c.fetchone():
+            c.execute('''INSERT INTO user_settings (username, password, token, message, speed, max_tickets, count, status) 
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)''', 
+                      (uname, pwd, "", "أهلاً بك، معك الإدارة العليا. كيف يمكنني مساعدتك؟", 0.5, 10, 0, "stopped"))
     conn.commit()
     conn.close()
 
@@ -81,20 +93,6 @@ def get_user_data(username):
         }
     return None
 
-def save_user_credentials(username, password):
-    conn = sqlite3.connect('bot_users.db', check_same_thread=False)
-    c = conn.cursor()
-    c.execute("SELECT password FROM user_settings WHERE username=?", (username,))
-    row = c.fetchone()
-    if row:
-        c.execute("UPDATE user_settings SET password=? WHERE username=?", (password, username))
-    else:
-        c.execute('''INSERT INTO user_settings (username, password, token, message, speed, max_tickets, count, status) 
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)''', 
-                  (username, password, "", "أهلاً بك، معك الإدارة العليا. كيف يمكنني مساعدتك؟", 0.5, 10, 0, "stopped"))
-    conn.commit()
-    conn.close()
-
 def save_user_data(username, data):
     conn = sqlite3.connect('bot_users.db', check_same_thread=False)
     c = conn.cursor()
@@ -118,33 +116,35 @@ class MRClient(discord.Client):
 
 client = MRClient()
 
-# مودال لتسجيل الدخول اليدوي (اسم المستخدم + كلمة المرور)
-class ManualLoginModal(discord.ui.Modal, title="🔐 تسجيل الدخول إلى النظام"):
-    username_input = discord.ui.TextInput(label="اسم المستخدم", placeholder="اكتب اسمك هنا...", required=True)
-    password_input = discord.ui.TextInput(label="كلمة المرور", style=discord.TextStyle.short, placeholder="اكتب رمز المرور...", required=True)
+# مودال التحقق من القائمة الحصرية للقدماء
+class RestrictedLoginModal(discord.ui.Modal, title="🔐 تسجيل دخول القدماء الحصري"):
+    username_input = discord.ui.TextInput(label="اسم المستخدم", placeholder="اكتب اسمك المعتمد...", required=True)
+    password_input = discord.ui.TextInput(label="كلمة المرور", style=discord.TextStyle.short, placeholder="رمز المرور...", required=True)
 
     async def on_submit(self, interaction: discord.Interaction):
         uname = self.username_input.value.strip()
         pwd = self.password_input.value.strip()
         
-        save_user_credentials(uname, pwd)
-        data = get_user_data(uname)
-        
-        discord_uid = str(interaction.user.id)
-        logged_in_users[discord_uid] = uname
-        if uname not in active_sessions:
-            active_sessions[uname] = data
-        
-        await interaction.response.send_message(f"✅ تم تسجيل الدخول بنجاح كـ **{uname}**!", ephemeral=True)
-        await show_main_panel(interaction, uname)
+        # التحقق هل الاسم موجود في القدماء وكلمة المرور صحيحة
+        if uname in INITIAL_USERS and INITIAL_USERS[uname] == pwd:
+            data = get_user_data(uname)
+            discord_uid = str(interaction.user.id)
+            logged_in_users[discord_uid] = uname
+            if uname not in active_sessions:
+                active_sessions[uname] = data
+            
+            await interaction.response.send_message(f"✅ تم التحقق وتسجيل الدخول بنجاح كـ **{uname}**!", ephemeral=True)
+            await show_main_panel(interaction, uname)
+        else:
+            await interaction.response.send_message("❌ عذراً، اسم المستخدم غير مسموح به أو كلمة المرور غير صحيحة!", ephemeral=True)
 
 class LoginView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="تسجيل الدخول 🔑", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="تسجيل الدخول الحصري 🔑", style=discord.ButtonStyle.primary)
     async def login_button_cb(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(ManualLoginModal())
+        await interaction.response.send_modal(RestrictedLoginModal())
 
 class TokenModal(discord.ui.Modal, title="🔒 إدخال توكن الحساب الأساسي"):
     token_input = discord.ui.TextInput(label="User Token", style=discord.TextStyle.paragraph, placeholder="الصق توكن حسابك هنا...", required=True)
@@ -203,7 +203,7 @@ class MRView(discord.ui.View):
     async def start_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         d = active_sessions[self.username]
         if not d["token"]:
-            await interaction.response.send_message("⚠️ يجب إدخال التوكن أولاً!", ephemeral=True)
+            await interaction.response.send_message("⚠️️ يجب إدخال التوكن أولاً!", ephemeral=True)
             return
         d["status"] = "running"
         if d["count"] >= d["max_tickets"]: d["count"] = 0
@@ -246,7 +246,7 @@ async def show_main_panel(interaction: discord.Interaction, username, edit=False
     else:
         await interaction.followup.send(embed=embed, view=MRView(username), ephemeral=True)
 
-@client.tree.command(name="mr", description="فتح لوحة التحكم وتسجيل الدخول اليدوي")
+@client.tree.command(name="mr", description="فتح لوحة التحكم الخاصة بالقدماء فقط")
 async def mr_command(interaction: discord.Interaction):
     discord_uid = str(interaction.user.id)
     if discord_uid in logged_in_users:
@@ -256,7 +256,7 @@ async def mr_command(interaction: discord.Interaction):
         await interaction.response.send_message("✨ أهلاً بك مجدداً، إليك لوحة التحكم الخاصة بك:", ephemeral=True)
         await show_main_panel(interaction, uname)
     else:
-        embed = discord.Embed(title="🔐 تسجيل الدخول إلى النظام", description="اضغط على الزر أدناه لإدخال اسم المستخدم وكلمة المرور الخاصة بك:", color=discord.Color.blue())
+        embed = discord.Embed(title="🔐 بوابة القدماء الحصرية", description="هذا النظام مخصص للقدماء فقط. اضغط أدناه لإدخال اسمك وكلمة المرور المعتمدة:", color=discord.Color.dark_red())
         await interaction.response.send_message(embed=embed, view=LoginView(), ephemeral=True)
 
 async def run_gateway_sniper(username, bot_client):
