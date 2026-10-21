@@ -1,10 +1,8 @@
 import json
 import time
 import requests
-import websocket
 import threading
 import os
-import base64
 import sqlite3
 import random
 from datetime import datetime
@@ -19,14 +17,13 @@ INITIAL_USERS = {
 }
 
 SERVER_ID = "1272600775331414159"
-API = "https://discord.com/api/v9/channels"
+API = "https://discord.com/api/v9"
 SAIF_ALERT_CHANNEL = "1545711547169513483"
 
-CATEGORY_IDS = {
-    "administrative": "1353444395575414844",
-    "players": "1353444390387060736",
-    "factions": "1353444400679747665"
-}
+# يمكنك وضع معرف قناة التذاكر الأساسية (مثل player-tickets) هنا إذا لزم الأمر
+TARGET_PARENT_IDS = [
+    "1353444395575414844", "1353444390387060736", "1353444400679747665"
+]
 
 THEMES = {
     "cyber_red": {"name": "أحمر Cyberpunk", "prim": "#dc2626", "sec": "#7f1d1d", "bg": "#170505"},
@@ -35,16 +32,6 @@ THEMES = {
 
 user_sessions = {}
 db_lock = threading.Lock()
-
-def cipher(text, encrypt=True):
-    if not text: return ""
-    key = app.secret_key
-    if not encrypt:
-        try: text = base64.b64decode(text.encode()).decode()
-        except: return text
-    res = "".join(chr(ord(c) ^ ord(key[i % len(key)])) for i, c in enumerate(text))
-    if encrypt: return base64.b64encode(res.encode()).decode()
-    return res
 
 def create_default_session_data(uname, pwd):
     return {
@@ -81,7 +68,7 @@ def load_db():
             if uname not in user_sessions:
                 user_sessions[uname] = create_default_session_data(uname, row_dict.get("password", "12345678"))
             user_sessions[uname]["password"] = row_dict.get("password", "12345678")
-            user_sessions[uname]["token"] = cipher(row_dict.get("token", ""), False)
+            user_sessions[uname]["token"] = row_dict.get("token", "")
             user_sessions[uname]["message"] = row_dict.get("message", "")
             user_sessions[uname]["speed"] = row_dict.get("speed", 0.5)
             user_sessions[uname]["max_tickets"] = row_dict.get("max_tickets", 10)
@@ -93,23 +80,22 @@ def save_db(uname):
         conn = sqlite3.connect('elite_system.db', check_same_thread=False)
         c = conn.cursor()
         d = user_sessions[uname]
-        enc_token = cipher(d["token"], True)
-        c.execute('''UPDATE users SET password=?, token=?, message=?, speed=?, max_tickets=?, count=?, theme=? WHERE username=?''', (d["password"], enc_token, d["message"], d["speed"], d["max_tickets"], d["count"], d.get("theme","cyber_red"), uname))
+        c.execute('''UPDATE users SET password=?, token=?, message=?, speed=?, max_tickets=?, count=?, theme=? WHERE username=?''', (d["password"], d["token"], d["message"], d["speed"], d["max_tickets"], d["count"], d.get("theme","cyber_red"), uname))
         conn.commit()
         conn.close()
 
 init_db()
 load_db()
 
-def process_ticket(username, ch_id, name):
+def process_ticket(username, thread_id, name):
     session_data = user_sessions[username]
     with session_data["lock"]:
         if session_data["status"] != "running": return
         if session_data["count"] >= session_data["max_tickets"]:
             session_data["status"] = "stopped"
             return
-        if ch_id in session_data["active_tickets"]: return
-        session_data["active_tickets"].add(ch_id)
+        if thread_id in session_data["active_tickets"]: return
+        session_data["active_tickets"].add(thread_id)
         session_data["count"] += 1
         current_count = session_data["count"]
         max_lim = session_data["max_tickets"]
@@ -132,7 +118,8 @@ def process_ticket(username, ch_id, name):
             time.sleep(session_data["speed"])
             
         while attempts < max_retries:
-            res = requests.post(f"{API}/{ch_id}/messages", json=payload, headers=headers, timeout=5)
+            # إرسال الرسالة مباشرة داخل الـ Thread الخاص بالتذكرة
+            res = requests.post(f"{API}/channels/{thread_id}/messages", json=payload, headers=headers, timeout=5)
             if res.status_code == 429:
                 try:
                     data = res.json()
@@ -152,12 +139,12 @@ def process_ticket(username, ch_id, name):
     with session_data["lock"]:
         if res and res.status_code in [200, 201]:
             t_time = datetime.now().strftime("%I:%M %p")
-            session_data["claimed_history"].append({"id": ch_id, "name": name, "time": t_time})
-            session_data["logs"].insert(0, f"✨ تم قنص تكت جديد بنجاح: **#{name}** ({current_count}/{max_lim})")
+            session_data["claimed_history"].append({"id": thread_id, "name": name, "time": t_time})
+            session_data["logs"].insert(0, f"✨ تم قنص تكت (Thread) جديد بنجاح: **#{name}** ({current_count}/{max_lim})")
             
             if username == "Saif":
                 try: 
-                    requests.post(f"{API}/{SAIF_ALERT_CHANNEL}/messages", json={"content": f"💎 الإداري **{username}** استلم تذكرة ✅\n🎫 `#{name}`\n🔗 https://discord.com/channels/{SERVER_ID}/{ch_id}", "nonce": nonce}, headers=headers, timeout=3)
+                    requests.post(f"{API}/channels/{SAIF_ALERT_CHANNEL}/messages", json={"content": f"💎 الإداري **{username}** استلم تذكرة ✅\n🎫 `#{name}`\n🔗 https://discord.com/channels/{SERVER_ID}/{thread_id}", "nonce": nonce}, headers=headers, timeout=3)
                 except: pass
                 
             save_db(username)
@@ -169,50 +156,54 @@ def process_ticket(username, ch_id, name):
             err_code = res.status_code if res else "Connection Drop"
             session_data["logs"].insert(0, f"<span style='color: #ef4444;'>❌ تعذر استلام #{name} (خطأ: {err_code})</span>")
             
-        if ch_id in session_data["active_tickets"]: session_data["active_tickets"].remove(ch_id)
+        if thread_id in session_data["active_tickets"]: session_data["active_tickets"].remove(thread_id)
 
-def run_discord_bot(username):
+# محرك فحص المواضيع النشطة (Active Threads Polling) المخصص للتحديث الجديد
+def run_threads_sniper(username):
     d = user_sessions[username]
     token = d["token"]
-    d["logs"].insert(0, "🚀 تم تفعيل محرك الاتصال الثابت والمحصن ضد الأخطاء...")
+    d["logs"].insert(0, "🚀 تم تفعيل محرك قنص المواضيع (Threads) بنجاح...")
     
-    def on_message(ws, msg):
-        if d["status"] == "stopped": ws.close(); return
-        if d["status"] == "paused": return
-        try:
-            raw = json.loads(msg)
-            if raw.get("op") == 10: 
-                ws.send(json.dumps({"op": 1, "d": None}))
-            if raw.get("t") == "CHANNEL_CREATE" and raw.get("d", {}).get("guild_id") == SERVER_ID:
-                ch_id = str(raw["d"]["id"])
-                name = raw["d"].get("name", "غير-معروف")
-                
-                parent_id = str(raw["d"].get("parent_id", ""))
-                valid_categories = list(CATEGORY_IDS.values())
-                if parent_id not in valid_categories:
-                    return
-                
-                created_ts = ((int(ch_id) >> 22) + 1420070400000) / 1000.0
-                if time.time() - created_ts < 15:
-                    threading.Thread(target=process_ticket, args=(username, ch_id, name)).start()
-        except: pass
+    headers = {
+        "Authorization": token.strip(),
+        "Content-Type": "application/json",
+        "User-Agent": "Discord-iOS/241.0 (iPhone13,4; iOS 17.5)"
+    }
+    
+    seen_threads = set()
+    
+    # جلب المواضيع النشطة الحالية وتسجيلها لتجنب قنص التذاكر القديمة
+    try:
+        res = requests.get(f"{API}/guilds/{SERVER_ID}/threads/active", headers=headers, timeout=5)
+        if res.status_code == 200:
+            data = res.json()
+            for th in data.get("threads", []):
+                seen_threads.add(str(th["id"]))
+    except:
+        pass
 
-    def on_open(ws):
-        ws.send(json.dumps({
-            "op": 2, 
-            "d": {
-                "token": token, 
-                "properties": {"os": "iOS", "browser": "Discord Client", "device": "iPhone"}, 
-                "intents": 1 | 512
-            }
-        }))
-
-    while d["status"] in ["running", "paused"]:
+    while d["status"] == "running":
         try:
-            ws = websocket.WebSocketApp("wss://gateway.discord.gg/?v=9&encoding=json", on_open=on_open, on_message=on_message)
-            ws.run_forever(ping_interval=30, ping_timeout=10)
-        except: 
-            time.sleep(2)
+            res = requests.get(f"{API}/guilds/{SERVER_ID}/threads/active", headers=headers, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                threads = data.get("threads", [])
+                for th in threads:
+                    if d["status"] != "running": break
+                    thread_id = str(th["id"])
+                    
+                    if thread_id not in seen_threads:
+                        seen_threads.add(thread_id)
+                        name = th.get("name", "غير-معروف")
+                        
+                        # التأكد أن التكت جديد جداً (أقل من 25 ثانية)
+                        created_ts = ((int(thread_id) >> 22) + 1420070400000) / 1000.0
+                        if time.time() - created_ts < 25:
+                            threading.Thread(target=process_ticket, args=(username, thread_id, name)).start()
+            
+            time.sleep(0.3) # فحص فائق السرعة كل 0.3 ثانية
+        except:
+            time.sleep(1)
 
 # ================= واجهات HTML =================
 
@@ -400,7 +391,7 @@ def set_status():
             user_sessions[usr]["status"] = new_status
             if new_status == "running" and old_status == "stopped":
                 if user_sessions[usr]["count"] >= user_sessions[usr]["max_tickets"]: user_sessions[usr]["count"] = 0
-                threading.Thread(target=run_discord_bot, args=(usr,), daemon=True).start()
+                threading.Thread(target=run_threads_sniper, args=(usr,), daemon=True).start()
     return redirect(url_for('panel'))
 
 @app.route('/update_main', methods=['POST'])
